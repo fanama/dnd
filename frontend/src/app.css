@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --dnd-gold: #c5a059;
+    --dnd-gold-dark: #a67c37;
+    --dnd-dark: #000000;
+    --dnd-panel: #0a0a0a;
+    --dnd-accent: #1a1a1a;
+    --dnd-paper: #f4e4bc;
+    --dnd-ink: #2c1e16;
+    --dnd-sepia: #704214;
+  }
+}
+
+@layer components {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--dnd-gold);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--dnd-gold-dark);
+  }
+  
+  .dnd-card {
+    background-color: var(--dnd-panel);
+    border: 1px solid var(--dnd-accent);
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .dnd-card:hover {
+    border-color: var(--dnd-gold);
+    box-shadow: 0 0 20px rgba(197, 160, 89, 0.15);
+  }
+}
+
+.font-cinzel { font-family: 'Cinzel', serif; }
+.font-medieval { font-family: 'MedievalSharp', cursive; }
+.font-alegreya { font-family: 'Alegreya', serif; }
+
+.bg-dnd-dark { background-color: var(--dnd-dark); }
+.bg-dnd-panel { background-color: var(--dnd-panel); }
+.bg-dnd-paper { background-color: var(--dnd-paper); }
+.text-dnd-gold { color: var(--dnd-gold); }
+.text-dnd-ink { color: var(--dnd-ink); }
+.border-dnd-gold { border-color: var(--dnd-gold); }
+.border-dnd-accent { border-color: var(--dnd-accent); }
+.border-dnd-sepia { border-color: var(--dnd-sepia); }
+
