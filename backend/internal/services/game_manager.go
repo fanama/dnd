@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"sync"
 
 	"dnd-backend/internal/domain"
@@ -11,13 +12,41 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var lootTable = []domain.Item{
+	// Consumables
+	{Nom: "Potion de Soin", IsConsumable: true, Prix: 25},
+	{Nom: "Potion de Force", IsConsumable: true, Prix: 30},
+	{Nom: "Potion d'Invisibilité", IsConsumable: true, Prix: 50},
+	{Nom: "Eau Bénite", IsConsumable: true, Prix: 20},
+	{Nom: "Antidote", IsConsumable: true, Prix: 15},
+	// Weapons
+	{Nom: "Dague d'Argent", IsConsumable: false, BonusDégâts: 3, Prix: 60},
+	{Nom: "Hache de Guerre", IsConsumable: false, BonusDégâts: 6, Prix: 120},
+	{Nom: "Arc Court", IsConsumable: false, BonusDégâts: 4, Prix: 80},
+	{Nom: "Masse d'Arme", IsConsumable: false, BonusDégâts: 5, Prix: 90},
+	{Nom: "Bâton runique", IsConsumable: false, BonusDégâts: 4, Prix: 75},
+	{Nom: "Lance Percutante", IsConsumable: false, BonusDégâts: 5, Prix: 95},
+	// Armor
+	{Nom: "Bouclier en Bois", IsConsumable: false, BonusArmure: 2, Prix: 40},
+	{Nom: "Plastron de Fer", IsConsumable: false, BonusArmure: 4, Prix: 150},
+	{Nom: "Cape de Cuir Renforcé", IsConsumable: false, BonusArmure: 3, Prix: 100},
+	{Nom: "Casque à Crête", IsConsumable: false, BonusArmure: 2, Prix: 60},
+	// Misc
+	{Nom: "Vieille Carte", IsConsumable: false, Prix: 10},
+	{Nom: "Clé Rouillée", IsConsumable: false, Prix: 5},
+	{Nom: "Joyau Éclatant", IsConsumable: false, Prix: 80},
+	{Nom: "Parchemin Ancien", IsConsumable: false, Prix: 35},
+	{Nom: "Corne d'Abondance", IsConsumable: false, Prix: 45},
+}
+
 type Action struct {
 	Type        string `json:"type"`
 	Cible       string `json:"cible,omitempty"`
 	Destination string `json:"destination,omitempty"`
 	Sort        string `json:"sort,omitempty"`
 	ItemIndex   int    `json:"item_index,omitempty"`
-	LootIndex   int    `json:"loot_index,omitempty"`
+	ItemName    string `json:"item_name,omitempty"`
+	LootName    string `json:"loot_name,omitempty"`
 }
 
 type GameManager struct {
@@ -34,10 +63,36 @@ func NewGameManager(repo *repository.SQLiteRepository) *GameManager {
 		World: &domain.World{
 			ID:      uuid.New(),
 			Players: make(map[string]*domain.Player),
-			Locations: []domain.Location{
-				{Nom: "Taverne", Background: "Ambiance chaleureuse", Objects: []domain.Item{{Nom: "Vieille Carte", IsConsumable: false, Prix: 10}}},
-				{Nom: "Donjon", Background: "Sombre et humide", Objects: []domain.Item{{Nom: "Épée Rouillée", IsConsumable: false, BonusDégâts: 2, Prix: 40}, {Nom: "Potion de Soin", IsConsumable: true, Prix: 25}}},
-			},
+		Locations: []domain.Location{
+			{Nom: "Taverne", Background: "Ambiance chaleureuse, odeur de biere", Objects: []domain.Item{
+				{Nom: "Vieille Carte", IsConsumable: false, Prix: 10},
+				{Nom: "Chope de Biere", IsConsumable: true, Prix: 5},
+			}},
+			{Nom: "Donjon", Background: "Sombre et humide, murs couverts de mousse", Objects: []domain.Item{
+				{Nom: "Épée Rouillée", IsConsumable: false, BonusDégâts: 2, Prix: 40},
+				{Nom: "Potion de Soin", IsConsumable: true, Prix: 25},
+			}},
+			{Nom: "Foret Enchantee", Background: "Arbres millenaires, lumiere filtreee", Objects: []domain.Item{
+				{Nom: "Herbes Medecinales", IsConsumable: true, Prix: 20},
+				{Nom: "Arc Elfe", IsConsumable: false, BonusDégâts: 4, Prix: 85},
+			}},
+			{Nom: "Montagne Rocheuse", Background: "Pics aceres, vent glacial", Objects: []domain.Item{
+				{Nom: "Haches de Guerre", IsConsumable: false, BonusDégâts: 6, Prix: 130},
+				{Nom: "Gantelets de Fer", IsConsumable: false, BonusArmure: 3, Prix: 90},
+			}},
+			{Nom: "Marais Hante", Background: "Brume epaisse, craquements suspects", Objects: []domain.Item{
+				{Nom: "Potion d'Invisibilite", IsConsumable: true, Prix: 50},
+				{Nom: "Fiole de Venom", IsConsumable: true, Prix: 35},
+			}},
+			{Nom: "Plaine des Conflits", Background: "Champ de bataille, drapeaux dechu", Objects: []domain.Item{
+				{Nom: "Bouclier en Bois", IsConsumable: false, BonusArmure: 2, Prix: 40},
+				{Nom: "Lance Percutante", IsConsumable: false, BonusDégâts: 5, Prix: 95},
+			}},
+			{Nom: "Temple Abandonne", Background: "Piliers brises, ombres dansantes", Objects: []domain.Item{
+				{Nom: "Sceptre Sacre", IsConsumable: false, BonusDégâts: 7, Prix: 160},
+				{Nom: "Parchemin Ancien", IsConsumable: false, Prix: 35},
+			}},
+		},
 		},
 	}
 	return gm
@@ -56,7 +111,7 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 	}
 
 	// 1. Attempt to restore from DB
-	nom, classe, lieu, pv, maxPv, invStr, statsStr, err := gm.Repo.GetCharacter(pseudo)
+	_, _, lieu, pv, _, invStr, statsStr, err := gm.Repo.GetCharacter(pseudo)
 	if err == nil {
 		var stats domain.Stats
 		json.Unmarshal([]byte(statsStr), &stats)
@@ -82,9 +137,18 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 		charClass := charInfo["classe"]
 
 		stats := domain.Stats{Nom: charName, Background: charClass}
-		if charClass == "Magicien" {
+		switch charClass {
+		case "Magicien":
 			stats.Force = 8; stats.Constitution = 9; stats.Vitesse = 11; stats.Charisme = 12; stats.Instinct = 14; stats.Savoir = 16
-		} else {
+		case "Voleur":
+			stats.Force = 10; stats.Constitution = 8; stats.Vitesse = 16; stats.Charisme = 10; stats.Instinct = 15; stats.Savoir = 11
+		case "Clerc":
+			stats.Force = 12; stats.Constitution = 14; stats.Vitesse = 8; stats.Charisme = 15; stats.Instinct = 9; stats.Savoir = 12
+		case "Barde":
+			stats.Force = 9; stats.Constitution = 10; stats.Vitesse = 13; stats.Charisme = 16; stats.Instinct = 12; stats.Savoir = 10
+		case "Ranger":
+			stats.Force = 13; stats.Constitution = 11; stats.Vitesse = 14; stats.Charisme = 8; stats.Instinct = 15; stats.Savoir = 9
+		default: // Guerrier
 			stats.Force = 15; stats.Constitution = 12; stats.Vitesse = 10; stats.Charisme = 10; stats.Instinct = 10; stats.Savoir = 10
 		}
 
@@ -96,10 +160,29 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 			Lieu:       "Taverne",
 		}
 
-		if charClass == "Magicien" {
+		switch charClass {
+		case "Magicien":
 			char.Sorts = append(char.Sorts, domain.Sort{Nom: "Boule de Feu", EcoleMagie: "Évocations"})
+		case "Clerc":
+			char.Sorts = append(char.Sorts, domain.Sort{Nom: "Soin Divin", EcoleMagie: "Guérison"})
+		case "Barde":
+			char.Sorts = append(char.Sorts, domain.Sort{Nom: "Mélodie Envoûtante", EcoleMagie: "Enchantement"})
 		}
-		char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Épée Longue", IsConsumable: false, BonusDégâts: 5, Prix: 100})
+
+		switch charClass {
+		case "Guerrier":
+			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Épée Longue", IsConsumable: false, BonusDégâts: 5, Prix: 100})
+		case "Magicien":
+			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Bâton Mystique", IsConsumable: false, BonusDégâts: 3, Prix: 80})
+		case "Voleur":
+			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Dague Empoisonnée", IsConsumable: false, BonusDégâts: 4, Prix: 90})
+		case "Clerc":
+			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Marteau Sacré", IsConsumable: false, BonusDégâts: 4, Prix: 95})
+		case "Barde":
+			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Luth Enchanté", IsConsumable: false, BonusDégâts: 2, Prix: 70})
+		case "Ranger":
+			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Arc Long", IsConsumable: false, BonusDégâts: 5, Prix: 100})
+		}
 		char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Potion de Soin", IsConsumable: true, Prix: 25})
 
 		player.Characters = append(player.Characters, char)
@@ -123,8 +206,8 @@ func (gm *GameManager) HandleAction(pseudo string, action Action) {
 	case "attack": gm.actionAttack(char, action.Cible)
 	case "move": gm.actionMove(char, action.Destination)
 	case "cast_spell": gm.actionCastSpell(char, action.Sort, action.Cible)
-	case "use_consumable": gm.actionConsume(char, action.ItemIndex)
-	case "loot": gm.actionLoot(char, action.LootIndex)
+	case "use_consumable": gm.actionConsume(char, action.ItemName)
+	case "loot": gm.actionLoot(char, action.LootName)
 	}
 
 	gm.saveCharacterState(pseudo, char)
@@ -160,6 +243,29 @@ func (gm *GameManager) actionMove(char *domain.Character, dest string) {
 		"type": "chat",
 		"msg":  fmt.Sprintf("🧳 %s s'est déplacé vers : %s.", char.Stats.Nom, dest),
 	})
+	gm.spawnLoot(dest)
+}
+
+func (gm *GameManager) spawnLoot(locationName string) {
+	var loc *domain.Location
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == locationName {
+			loc = &gm.World.Locations[i]
+			break
+		}
+	}
+	if loc == nil { return }
+	if len(loc.Objects) >= 5 { return }
+
+	numSpawns := rand.Intn(3) // 0, 1, or 2 items
+	for i := 0; i < numSpawns && len(loc.Objects) < 5; i++ {
+		item := lootTable[rand.Intn(len(lootTable))]
+		loc.Objects = append(loc.Objects, item)
+		gm.broadcast(map[string]interface{}{
+			"type": "chat",
+			"msg":  fmt.Sprintf("✨ Un objet est apparu dans %s : %s !", locationName, item.Nom),
+		})
+	}
 }
 
 func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string, targetPseudo string) {
@@ -175,16 +281,23 @@ func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string,
 	gm.checkDeath(target)
 }
 
-func (gm *GameManager) actionConsume(char *domain.Character, index int) {
-	if index < 0 || index >= len(char.Inventaire) { return }
-	item := char.Inventaire[index]
+func (gm *GameManager) actionConsume(char *domain.Character, itemName string) {
+	itemIdx := -1
+	for i, item := range char.Inventaire {
+		if item.Nom == itemName {
+			itemIdx = i
+			break
+		}
+	}
+	if itemIdx == -1 { return }
+	item := char.Inventaire[itemIdx]
 	if item.IsConsumable {
 		heal := char.Stats.Constitution * 5
 		char.CurrentPV += heal
 		if char.CurrentPV > char.Stats.CalculateLifePoints() {
 			char.CurrentPV = char.Stats.CalculateLifePoints()
 		}
-		char.Inventaire = append(char.Inventaire[:index], char.Inventaire[index+1:]...)
+		char.Inventaire = append(char.Inventaire[:itemIdx], char.Inventaire[itemIdx+1:]...)
 		gm.broadcast(map[string]interface{}{
 			"type": "chat",
 			"msg":  fmt.Sprintf("🧪 %s boit une %s et récupère %.0f PV !", char.Stats.Nom, item.Nom, heal),
@@ -209,7 +322,7 @@ func (gm *GameManager) getLatestCharacter(pseudo string) *domain.Character {
 	return player.Characters[len(player.Characters)-1]
 }
 
-func (gm *GameManager) actionLoot(char *domain.Character, index int) {
+func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 	var currentLocation *domain.Location
 	for i := range gm.World.Locations {
 		if gm.World.Locations[i].Nom == char.Lieu {
@@ -217,10 +330,18 @@ func (gm *GameManager) actionLoot(char *domain.Character, index int) {
 			break
 		}
 	}
-	if currentLocation == nil || index < 0 || index >= len(currentLocation.Objects) { return }
-	item := currentLocation.Objects[index]
+	if currentLocation == nil || itemName == "" { return }
+	itemIdx := -1
+	for i, obj := range currentLocation.Objects {
+		if obj.Nom == itemName {
+			itemIdx = i
+			break
+		}
+	}
+	if itemIdx == -1 { return }
+	item := currentLocation.Objects[itemIdx]
 	char.Inventaire = append(char.Inventaire, item)
-	currentLocation.Objects = append(currentLocation.Objects[:index], currentLocation.Objects[index+1:]...)
+	currentLocation.Objects = append(currentLocation.Objects[:itemIdx], currentLocation.Objects[itemIdx+1:]...)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
 		"msg":  fmt.Sprintf("🎒 %s a ramassé %s dans %s !", char.Stats.Nom, item.Nom, char.Lieu),
@@ -246,6 +367,7 @@ func (gm *GameManager) NotifyChange() {
 			syncData[pseudo] = map[string]interface{}{
 				"nom":        char.Stats.Nom,
 				"pv":         char.CurrentPV,
+				"max_pv":     char.Stats.CalculateLifePoints(),
 				"classe":     char.Stats.Background,
 				"lieu":       char.Lieu,
 				"sorts":      sorts,

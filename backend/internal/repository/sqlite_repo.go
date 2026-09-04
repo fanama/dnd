@@ -43,13 +43,13 @@ func createTables(db *sql.DB) error {
 }
 
 func (r *SQLiteRepository) SaveCharacter(pseudo, nom, classe, lieu string, pv, maxPv int, inventaire string, stats string) error {
-	query := \`INSERT OR REPLACE INTO characters (pseudo, nom, classe, pv, max_pv, lieu, inventaire, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\`
+	query := `INSERT OR REPLACE INTO characters (pseudo, nom, classe, pv, max_pv, lieu, inventaire, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err := r.db.Exec(query, pseudo, nom, classe, lieu, pv, maxPv, inventaire, stats)
 	return err
 }
 
 func (r *SQLiteRepository) GetCharacter(pseudo string) (nom, classe, lieu string, pv, maxPv int, inventaire, stats string, err error) {
-	query := \`SELECT nom, classe, lieu, pv, max_pv, inventaire, stats FROM characters WHERE pseudo = ?\`
+	query := `SELECT nom, classe, lieu, pv, max_pv, inventaire, stats FROM characters WHERE pseudo = ?`
 	err = r.db.QueryRow(query, pseudo).Scan(&nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats)
 	return
 }

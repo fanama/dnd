@@ -1,16 +1,18 @@
 <script>
     import '../app.css';
-    import { gameState, connect, sendAction } from '../lib/stores/game.js';
+    import { gameState, connect, sendAction } from '../lib/stores/game';
     import LoginPage from '../lib/components/organisms/pages/LoginPage.svelte';
     import GamePage from '../lib/components/organisms/pages/GamePage.svelte';
 
     let pseudo = '';
     let charName = '';
     let charClass = 'Guerrier';
+    let connectionError = '';
 
     function join() {
-        if (pseudo && charName) {
-            connect(pseudo, charName, charClass);
+        if (pseudo.trim() && charName.trim()) {
+            connectionError = '';
+            connect(pseudo.trim(), charName.trim(), charClass);
         }
     }
 
@@ -22,44 +24,139 @@
         sendAction({ type: 'attack', cible: target });
     }
 
-    function useItem(idx) {
-        sendAction({ type: 'use_consumable', item_index: idx });
+    function useItem(name) {
+        sendAction({ type: 'use_consumable', item_name: name });
     }
 
-    function lootItem(idx) {
-        sendAction({ type: 'loot', loot_index: idx });
+    function lootItem(name) {
+        sendAction({ type: 'loot', loot_name: name });
     }
 
     $: myStats = $gameState.players[$gameState.me];
 </script>
 
 <svelte:head>
-    <title>D&D - Svelte Edition</title>
+    <title>D&D - Table de Jeu</title>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=MedievalSharp&family=Alegreya:wght@400;700&display=swap" rel="stylesheet">
 </svelte:head>
 
-<main class="min-h-screen bg-dnd-dark text-stone-200 font-alegreya p-6 md:p-12 lg:p-16">
-    <div class="max-w-7xl mx-auto space-y-12">
-        <h1 class="text-center text-dnd-gold font-cinzel text-4xl md:text-6xl border-b-4 double border-dnd-gold pb-8 mb-4 drop-shadow-md">⚔️ Table de Jeu - Svelte & Go ⚔️</h1>
-
-        {#if !$gameState.me}
-            <div class="py-12">
-                <LoginPage 
-                    bind:pseudo 
-                    bind:charName 
-                    bind:charClass 
-                    onJoin={join} 
-                />
+<main class="app-root">
+    {#if !$gameState.me}
+        <div class="login-view slide-up">
+            <div class="login-branding">
+                <h1 class="brand-title">
+                    <span class="brand-icon">⚔️</span>
+                    Table de Jeu
+                </h1>
+                <p class="brand-subtitle">Svelte & Go</p>
             </div>
-        {:else}
-            <GamePage 
-                gameState={$gameState} 
-                myStats={myStats} 
-                onMove={move} 
-                onHit={hit} 
-                onUseItem={useItem} 
-                onLootItem={lootItem} 
+
+            <LoginPage
+                bind:pseudo
+                bind:charName
+                bind:charClass
+                onJoin={join}
             />
-        {/if}
-    </div>
+
+            {#if connectionError}
+                <div class="error-toast fade-in">
+                    {connectionError}
+                </div>
+            {/if}
+        </div>
+    {:else}
+        <div class="game-view">
+            <GamePage
+                gameState={$gameState}
+                myStats={myStats}
+                onMove={move}
+                onHit={hit}
+                onUseItem={useItem}
+                onLootItem={lootItem}
+            />
+        </div>
+    {/if}
 </main>
+
+<style>
+    :global(body) {
+        margin: 0;
+        padding: 0;
+        background: #000;
+    }
+
+    .app-root {
+        min-height: 100vh;
+        min-height: 100dvh;
+        background: radial-gradient(ellipse at top, #0d0a07 0%, #000 60%);
+        color: #e8e0d4;
+    }
+
+    .login-view {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 16px 60px;
+        min-height: 100vh;
+        min-height: 100dvh;
+        justify-content: center;
+    }
+
+    .login-branding {
+        text-align: center;
+        margin-bottom: 8px;
+    }
+
+    .brand-title {
+        font-family: 'Cinzel', serif;
+        color: #c5a059;
+        font-size: 2.5rem;
+        margin: 0;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .brand-icon {
+        font-size: 2rem;
+    }
+
+    .brand-subtitle {
+        font-family: 'MedievalSharp', cursive;
+        color: #5a5045;
+        font-size: 1rem;
+        margin: 4px 0 0 0;
+        letter-spacing: 0.15em;
+    }
+
+    .game-view {
+        min-height: 100vh;
+        min-height: 100dvh;
+    }
+
+    .error-toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(185, 28, 28, 0.9);
+        color: #fecdd3;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-family: 'Alegreya', serif;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        backdrop-filter: blur(8px);
+        z-index: 100;
+    }
+
+    @media (max-width: 640px) {
+        .brand-title {
+            font-size: 1.8rem;
+        }
+        .login-view {
+            padding: 24px 8px 40px;
+        }
+    }
+</style>
