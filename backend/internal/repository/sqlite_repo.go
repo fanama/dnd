@@ -54,6 +54,34 @@ func (r *SQLiteRepository) GetCharacter(pseudo string) (nom, classe, lieu string
 	return
 }
 
+func (r *SQLiteRepository) DeleteCharacter(pseudo string) error {
+	query := `DELETE FROM characters WHERE pseudo = ?`
+	_, err := r.db.Exec(query, pseudo)
+	return err
+}
+
+func (r *SQLiteRepository) GetAllCharacters() (map[string]struct{ Nom, Classe, Lieu, Inventaire, Stats string; PV, MaxPV int }, error) {
+	query := `SELECT pseudo, nom, classe, lieu, pv, max_pv, inventaire, stats FROM characters`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]struct{ Nom, Classe, Lieu, Inventaire, Stats string; PV, MaxPV int })
+	for rows.Next() {
+		var pseudo, nom, classe, lieu, inventaire, stats string
+		var pv, maxPv int
+		if err := rows.Scan(&pseudo, &nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats); err != nil {
+			continue
+		}
+		result[pseudo] = struct{ Nom, Classe, Lieu, Inventaire, Stats string; PV, MaxPV int }{
+			Nom: nom, Classe: classe, Lieu: lieu, Inventaire: inventaire, Stats: stats, PV: pv, MaxPV: maxPv,
+		}
+	}
+	return result, nil
+}
+
 func (r *SQLiteRepository) Close() error {
 	return r.db.Close()
 }

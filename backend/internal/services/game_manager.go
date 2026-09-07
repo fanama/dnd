@@ -40,29 +40,40 @@ var lootTable = []domain.Item{
 }
 
 type Action struct {
-	Type        string `json:"type"`
-	Cible       string `json:"cible,omitempty"`
-	Destination string `json:"destination,omitempty"`
-	Sort        string `json:"sort,omitempty"`
-	ItemIndex   int    `json:"item_index,omitempty"`
-	ItemName    string `json:"item_name,omitempty"`
-	LootName    string `json:"loot_name,omitempty"`
+	Type         string       `json:"type"`
+	Cible        string       `json:"cible,omitempty"`
+	Destination  string       `json:"destination,omitempty"`
+	Sort         string       `json:"sort,omitempty"`
+	ItemIndex    int          `json:"item_index,omitempty"`
+	ItemName     string       `json:"item_name,omitempty"`
+	LootName     string       `json:"loot_name,omitempty"`
+	TargetPlayer string       `json:"target_player,omitempty"`
+	Stats        domain.Stats `json:"stats,omitempty"`
+	Item         domain.Item  `json:"item,omitempty"`
+	Spell        domain.Sort  `json:"spell,omitempty"`
+	PV           float64      `json:"pv,omitempty"`
+	Alignement   string       `json:"alignement,omitempty"`
+	NewName      string       `json:"new_name,omitempty"`
+	LocationBg   string       `json:"location_bg,omitempty"`
 }
 
 type GameManager struct {
 	Connections map[string]*websocket.Conn
 	World       *domain.World
 	Repo        *repository.SQLiteRepository
+	DMs         map[string]bool
 	mu          sync.Mutex
 }
 
 func NewGameManager(repo *repository.SQLiteRepository) *GameManager {
 	gm := &GameManager{
 		Connections: make(map[string]*websocket.Conn),
+		DMs:         make(map[string]bool),
 		Repo:        repo,
 		World: &domain.World{
 			ID:      uuid.New(),
 			Players: make(map[string]*domain.Player),
+			NPCs:    make(map[string]*domain.Character),
 		Locations: []domain.Location{
 			{Nom: "Taverne", Background: "Ambiance chaleureuse, odeur de biere", Objects: []domain.Item{
 				{Nom: "Vieille Carte", IsConsumable: false, Prix: 10},
@@ -95,7 +106,47 @@ func NewGameManager(repo *repository.SQLiteRepository) *GameManager {
 		},
 		},
 	}
+	gm.seedDefaultNPCs()
 	return gm
+}
+
+func (gm *GameManager) seedDefaultNPCs() {
+	defaults := []struct {
+		name, lieu, classe, align string
+		pv, force, con, vit, cha, sav, inst float64
+		items []domain.Item
+	}{
+		{"Arnold le Tavernier", "Taverne", "Aubergiste", "Neutre Bon", 60, 12, 12, 10, 14, 10, 10,
+			[]domain.Item{{Nom: "Chope de Biere", IsConsumable: true, Prix: 5}}},
+		{"Mira la Voyante", "Taverne", "Devineresse", "Chaotique Neutre", 45, 8, 9, 12, 9, 16, 15,
+			[]domain.Item{{Nom: "Boule de Cristal", Prix: 200}}},
+		{"Grum le Garde", "Donjon", "Gardien", "Loyal Neutre", 80, 15, 14, 11, 8, 9, 10,
+			[]domain.Item{{Nom: "Hallebarde", BonusDégâts: 7, Prix: 120}}},
+		{"Elara la Dryade", "Foret Enchantee", "Gardienne de la Foret", "Neutre Bon", 55, 9, 10, 15, 12, 11, 16,
+			[]domain.Item{{Nom: "Herbes Medecinales", IsConsumable: true, Prix: 20}}},
+		{"Boris le Forgeron", "Montagne Rocheuse", "Forgeron", "Loyal Neutre", 70, 16, 14, 9, 10, 9, 10,
+			[]domain.Item{{Nom: "Marteau de Forgeron", BonusDégâts: 6, Prix: 110}}},
+		{"Zorra la Sorciere", "Marais Hante", "Sorciere", "Chaotique Mauvais", 40, 7, 10, 11, 10, 17, 14,
+			[]domain.Item{{Nom: "Fiole de Venom", IsConsumable: true, Prix: 35}}},
+		{"Sir Aldric", "Temple Abandonne", "Paladin", "Loyal Bon", 90, 17, 16, 10, 12, 11, 11,
+			[]domain.Item{{Nom: "Epée Sacrée", BonusDégâts: 8, Prix: 250}}},
+	}
+	for _, d := range defaults {
+		stats := domain.Stats{
+			Nom: d.name, Background: d.classe,
+			Force: d.force, Constitution: d.con, Vitesse: d.vit,
+			Charisme: d.cha, Savoir: d.sav, Instinct: d.inst,
+		}
+		gm.World.NPCs[d.name] = &domain.Character{
+			ID:         uuid.New(),
+			Alignement: d.align,
+			Stats:      stats,
+			CurrentPV:  d.pv,
+			Lieu:       d.lieu,
+			Inventaire: d.items,
+			Sorts:      []domain.Sort{},
+		}
+	}
 }
 
 func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[string]string) {
@@ -103,6 +154,10 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 	defer gm.mu.Unlock()
 
 	gm.Connections[pseudo] = ws
+
+	// Detect DM role
+	isDM := pseudo == "dm" || len(pseudo) > 3 && pseudo[:3] == "dm_"
+	gm.DMs[pseudo] = isDM
 
 	player, ok := gm.World.Players[pseudo]
 	if !ok {
@@ -198,6 +253,72 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 func (gm *GameManager) HandleAction(pseudo string, action Action) {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
+
+	// DM actions
+	if gm.DMs[pseudo] {
+		switch action.Type {
+		case "dm_edit_stats":
+			gm.dmEditStats(action.TargetPlayer, action.Stats)
+			return
+		case "dm_set_pv":
+			gm.dmSetPV(action.TargetPlayer, action.PV)
+			return
+		case "dm_add_item":
+			gm.dmAddItem(action.TargetPlayer, action.Item)
+			return
+		case "dm_remove_item":
+			gm.dmRemoveItem(action.TargetPlayer, action.ItemIndex)
+			return
+		case "dm_add_spell":
+			gm.dmAddSpell(action.TargetPlayer, action.Spell)
+			return
+		case "dm_remove_spell":
+			gm.dmRemoveSpell(action.TargetPlayer, action.ItemIndex)
+			return
+		case "dm_move_player":
+			gm.dmMovePlayer(action.TargetPlayer, action.Destination)
+			return
+		case "dm_teleport_item_add":
+			gm.dmAddLocationItem(action.Destination, action.Item)
+			return
+		case "dm_teleport_item_remove":
+			gm.dmRemoveLocationItem(action.Destination, action.ItemIndex)
+			return
+		case "dm_delete_player":
+			gm.dmDeletePlayer(action.TargetPlayer)
+			return
+		case "dm_edit_align":
+			gm.dmEditAlign(action.TargetPlayer, action.Alignement)
+			return
+		case "dm_edit_location":
+			gm.dmEditLocation(action.Destination, action.NewName, action.LocationBg)
+			return
+		case "dm_add_npc":
+			gm.dmAddNPC(action.ItemName, action.Destination, action.PV, action.Alignement)
+			return
+		case "dm_remove_npc":
+			gm.dmRemoveNPC(action.ItemName)
+			return
+		case "dm_edit_npc":
+			gm.dmEditNPC(action.ItemName, action.Stats, action.PV, action.Alignement)
+			return
+		case "dm_move_npc":
+			gm.dmMoveNPC(action.ItemName, action.Destination)
+			return
+		case "dm_npc_add_item":
+			gm.dmNPCAddItem(action.ItemName, action.Item)
+			return
+		case "dm_npc_remove_item":
+			gm.dmNPCRemoveItem(action.ItemName, action.ItemIndex)
+			return
+		case "dm_npc_add_spell":
+			gm.dmNPCAddSpell(action.ItemName, action.Spell)
+			return
+		case "dm_npc_remove_spell":
+			gm.dmNPCRemoveSpell(action.ItemName, action.ItemIndex)
+			return
+		}
+	}
 
 	char := gm.getLatestCharacter(pseudo)
 	if char == nil { return }
@@ -348,6 +469,321 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 	})
 }
 
+// --- DM Actions ---
+
+func (gm *GameManager) getCharacterByPseudo(targetPseudo string) *domain.Character {
+	player, ok := gm.World.Players[targetPseudo]
+	if !ok || len(player.Characters) == 0 { return nil }
+	return player.Characters[len(player.Characters)-1]
+}
+
+func (gm *GameManager) dmEditStats(targetPseudo string, stats domain.Stats) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil { return }
+	char.Stats.Force = stats.Force
+	char.Stats.Constitution = stats.Constitution
+	char.Stats.Vitesse = stats.Vitesse
+	char.Stats.Charisme = stats.Charisme
+	char.Stats.Savoir = stats.Savoir
+	char.Stats.Instinct = stats.Instinct
+	if stats.Nom != "" { char.Stats.Nom = stats.Nom }
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("📜 Le Maître du Donjon a modifié les stats de %s.", char.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmSetPV(targetPseudo string, pv float64) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil { return }
+	char.CurrentPV = pv
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("❤️ Le Maître du Donjon a mis les PV de %s à %.0f.", char.Stats.Nom, pv),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmAddItem(targetPseudo string, item domain.Item) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil { return }
+	char.Inventaire = append(char.Inventaire, item)
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🎁 Le MDJ a ajouté \"%s\" à l'inventaire de %s.", item.Nom, char.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmRemoveItem(targetPseudo string, index int) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil || index < 0 || index >= len(char.Inventaire) { return }
+	removed := char.Inventaire[index]
+	char.Inventaire = append(char.Inventaire[:index], char.Inventaire[index+1:]...)
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🗑️ Le MDJ a retiré \"%s\" de l'inventaire de %s.", removed.Nom, char.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmAddSpell(targetPseudo string, spell domain.Sort) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil { return }
+	char.Sorts = append(char.Sorts, spell)
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("✨ Le MDJ a ajouté le sort \"%s\" à %s.", spell.Nom, char.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmRemoveSpell(targetPseudo string, index int) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil || index < 0 || index >= len(char.Sorts) { return }
+	removed := char.Sorts[index]
+	char.Sorts = append(char.Sorts[:index], char.Sorts[index+1:]...)
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🚫 Le MDJ a retiré le sort \"%s\" de %s.", removed.Nom, char.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmMovePlayer(targetPseudo string, destination string) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil { return }
+	char.Lieu = destination
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🌀 Le MDJ a téléporté %s vers %s.", char.Stats.Nom, destination),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmAddLocationItem(locationName string, item domain.Item) {
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == locationName {
+			gm.World.Locations[i].Objects = append(gm.World.Locations[i].Objects, item)
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("📦 Le MDJ a ajouté \"%s\" à %s.", item.Nom, locationName),
+			})
+			gm.NotifyChange()
+			return
+		}
+	}
+}
+
+func (gm *GameManager) dmRemoveLocationItem(locationName string, index int) {
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == locationName {
+			loc := &gm.World.Locations[i]
+			if index < 0 || index >= len(loc.Objects) { return }
+			removed := loc.Objects[index]
+			loc.Objects = append(loc.Objects[:index], loc.Objects[index+1:]...)
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("🗑️ Le MDJ a retiré \"%s\" de %s.", removed.Nom, locationName),
+			})
+			gm.NotifyChange()
+			return
+		}
+	}
+}
+
+func (gm *GameManager) dmDeletePlayer(targetPseudo string) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	name := targetPseudo
+	if char != nil { name = char.Stats.Nom }
+	delete(gm.World.Players, targetPseudo)
+	delete(gm.Connections, targetPseudo)
+	delete(gm.DMs, targetPseudo)
+	gm.Repo.DeleteCharacter(targetPseudo)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("💀 Le MDJ a supprimé %s du monde.", name),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmEditAlign(targetPseudo string, align string) {
+	char := gm.getCharacterByPseudo(targetPseudo)
+	if char == nil { return }
+	char.Alignement = align
+	gm.saveCharacterState(targetPseudo, char)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("⚖️ Le MDJ a changé l'alignement de %s à %s.", char.Stats.Nom, align),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmEditLocation(oldName, newName, newBg string) {
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == oldName {
+			if newName != "" {
+				gm.World.Locations[i].Nom = newName
+				// Update all players at this location
+				for _, player := range gm.World.Players {
+					for _, char := range player.Characters {
+						if char.Lieu == oldName {
+							char.Lieu = newName
+						}
+					}
+				}
+				// Update all NPCs at this location
+				for _, npc := range gm.World.NPCs {
+					if npc.Lieu == oldName {
+						npc.Lieu = newName
+					}
+				}
+			}
+			if newBg != "" {
+				gm.World.Locations[i].Background = newBg
+			}
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("🗺️ Le MDJ a modifié le lieu \"%s\".", oldName),
+			})
+			gm.NotifyChange()
+			return
+		}
+	}
+}
+
+// --- NPC Actions ---
+
+func (gm *GameManager) dmAddNPC(name, location string, pv float64, align string) {
+	if name == "" { return }
+	// Check existing
+	if _, exists := gm.World.NPCs[name]; exists {
+		gm.broadcast(map[string]interface{}{
+			"type": "chat",
+			"msg":  fmt.Sprintf("⚠️ Un PNJ nommé \"%s\" existe déjà.", name),
+		})
+		return
+	}
+	stats := domain.Stats{
+		Nom:        name,
+		Background: "PNJ",
+		Force:      10, Constitution: 10, Vitesse: 10, Charisme: 10, Savoir: 10, Instinct: 10,
+	}
+	if pv <= 0 { pv = stats.CalculateLifePoints() }
+	if align == "" { align = "Neutre" }
+	npc := &domain.Character{
+		ID:         uuid.New(),
+		Alignement: align,
+		Stats:      stats,
+		CurrentPV:  pv,
+		Lieu:       location,
+		Inventaire: []domain.Item{},
+		Sorts:      []domain.Sort{},
+	}
+	gm.World.NPCs[name] = npc
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🤝 Le MDJ a ajouté le PNJ \"%s\" à %s.", name, location),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmRemoveNPC(name string) {
+	npc, ok := gm.World.NPCs[name]
+	if !ok { return }
+	delete(gm.World.NPCs, name)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🗑️ Le MDJ a supprimé le PNJ \"%s\" du monde.", npc.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, align string) {
+	npc, ok := gm.World.NPCs[name]
+	if !ok { return }
+	if stats.Nom != "" { npc.Stats.Nom = stats.Nom }
+	if stats.Background != "" { npc.Stats.Background = stats.Background }
+	if stats.Force != 0 { npc.Stats.Force = stats.Force }
+	if stats.Constitution != 0 { npc.Stats.Constitution = stats.Constitution }
+	if stats.Vitesse != 0 { npc.Stats.Vitesse = stats.Vitesse }
+	if stats.Charisme != 0 { npc.Stats.Charisme = stats.Charisme }
+	if stats.Savoir != 0 { npc.Stats.Savoir = stats.Savoir }
+	if stats.Instinct != 0 { npc.Stats.Instinct = stats.Instinct }
+	if pv > 0 { npc.CurrentPV = pv }
+	if align != "" { npc.Alignement = align }
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("📜 Le MDJ a modifié le PNJ \"%s\".", npc.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmMoveNPC(name, destination string) {
+	npc, ok := gm.World.NPCs[name]
+	if !ok { return }
+	npc.Lieu = destination
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🌀 Le MDJ a déplacé le PNJ \"%s\" vers %s.", npc.Stats.Nom, destination),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmNPCAddItem(name string, item domain.Item) {
+	npc, ok := gm.World.NPCs[name]
+	if !ok { return }
+	npc.Inventaire = append(npc.Inventaire, item)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🎁 Le MDJ a donné \"%s\" au PNJ \"%s\".", item.Nom, npc.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmNPCRemoveItem(name string, index int) {
+	npc, ok := gm.World.NPCs[name]
+	if !ok || index < 0 || index >= len(npc.Inventaire) { return }
+	removed := npc.Inventaire[index]
+	npc.Inventaire = append(npc.Inventaire[:index], npc.Inventaire[index+1:]...)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🗑️ Le MDJ a retiré \"%s\" du PNJ \"%s\".", removed.Nom, npc.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmNPCAddSpell(name string, spell domain.Sort) {
+	npc, ok := gm.World.NPCs[name]
+	if !ok { return }
+	npc.Sorts = append(npc.Sorts, spell)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("✨ Le MDJ a ajouté le sort \"%s\" au PNJ \"%s\".", spell.Nom, npc.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmNPCRemoveSpell(name string, index int) {
+	npc, ok := gm.World.NPCs[name]
+	if !ok || index < 0 || index >= len(npc.Sorts) { return }
+	removed := npc.Sorts[index]
+	npc.Sorts = append(npc.Sorts[:index], npc.Sorts[index+1:]...)
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("🚫 Le MDJ a retiré le sort \"%s\" du PNJ \"%s\".", removed.Nom, npc.Stats.Nom),
+	})
+	gm.NotifyChange()
+}
+
 func (gm *GameManager) broadcast(data interface{}) {
 	msg, _ := json.Marshal(data)
 	for _, conn := range gm.Connections {
@@ -360,25 +796,39 @@ func (gm *GameManager) NotifyChange() {
 	for pseudo, player := range gm.World.Players {
 		if len(player.Characters) > 0 {
 			char := player.Characters[len(player.Characters)-1]
-			sorts := []string{}
-			for _, s := range char.Sorts { sorts = append(sorts, s.Nom) }
-			inv := []string{}
-			for _, i := range char.Inventaire { inv = append(inv, i.Nom) }
 			syncData[pseudo] = map[string]interface{}{
 				"nom":        char.Stats.Nom,
 				"pv":         char.CurrentPV,
 				"max_pv":     char.Stats.CalculateLifePoints(),
 				"classe":     char.Stats.Background,
 				"lieu":       char.Lieu,
-				"sorts":      sorts,
-				"inventaire": inv,
-				"stats":       char.Stats,
+				"alignement": char.Alignement,
+				"sorts":      char.Sorts,
+				"inventaire": char.Inventaire,
+				"stats":      char.Stats,
+				"role":       gm.DMs[pseudo],
 			}
 		}
 	}
+	npcData := make(map[string]interface{})
+	for name, npc := range gm.World.NPCs {
+		npcData[name] = map[string]interface{}{
+			"nom":        npc.Stats.Nom,
+			"pv":         npc.CurrentPV,
+			"max_pv":     npc.Stats.CalculateLifePoints(),
+			"classe":     npc.Stats.Background,
+			"lieu":       npc.Lieu,
+			"alignement": npc.Alignement,
+			"sorts":      npc.Sorts,
+			"inventaire": npc.Inventaire,
+			"stats":      npc.Stats,
+			"is_npc":     true,
+		}
+	}
 	gm.broadcast(map[string]interface{}{
-		"type": "sync",
-		"liste": syncData,
+		"type":      "sync",
+		"liste":     syncData,
+		"npcs":      npcData,
 		"locations": gm.World.Locations,
 	})
 }
@@ -387,6 +837,7 @@ func (gm *GameManager) Disconnect(pseudo string) {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 	delete(gm.Connections, pseudo)
+	delete(gm.DMs, pseudo)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
 		"msg":  fmt.Sprintf("🏃 %s a quitté le jeu.", pseudo),

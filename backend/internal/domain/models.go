@@ -70,7 +70,8 @@ type Location struct {
 }
 
 type World struct {
-	ID        uuid.UUID   `json:"id"`
-	Players   map[string]*Player `json:"players"`
-	Locations []Location  `json:"locations"`
+	ID        uuid.UUID            `json:"id"`
+	Players   map[string]*Player   `json:"players"`
+	NPCs      map[string]*Character `json:"npcs"`
+	Locations []Location           `json:"locations"`
 }
