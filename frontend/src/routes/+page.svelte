@@ -39,6 +39,14 @@
     function unequipItem(slot) {
         sendAction({ type: 'unequip_item', slot: slot });
     }
+
+    function acceptQuest(name) {
+        sendAction({ type: 'accept_quest', quest_name: name });
+    }
+
+    function completeQuest(name) {
+        sendAction({ type: 'complete_quest', quest_name: name });
+    }
 </script>
 
 <svelte:head>
@@ -80,6 +88,8 @@
                 onLootItem={lootItem}
                 onEquip={equipItem}
                 onUnequip={unequipItem}
+                onAcceptQuest={acceptQuest}
+                onCompleteQuest={completeQuest}
             />
         </div>
     {/if}

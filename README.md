@@ -2,7 +2,7 @@
 
 A multiplayer, asynchronous, ultra-lightweight tabletop RPG (TTRPG) platform. The backend is built in **Go** with WebSockets and **SQLite** persistence. The player client is a reactive **Svelte 4** app with **TypeScript**, powered by **Vite**, and a dedicated **Dungeon Master panel** (`dm-frontend`) lets a GM administer the whole world in real time.
 
-The platform manages real-time virtual tabletop sessions: player movement, physical and magic combat, inventory management, NPC management, location exploration, and instant event logging.
+The platform manages real-time virtual tabletop sessions: player movement, physical and magic combat, inventory management, quests, NPC management, location exploration, and instant event logging.
 
 ---
 
@@ -20,11 +20,17 @@ The project follows a clean modular architecture with strict separation between 
 │   │       └── main.go         # Entry point, Dependency Injection
 │   └── internal/
 │       ├── domain/             # Pure business logic (Models)
-│       │   └── models.go       # Character, Stats, Item, Spell, World, NPC...
+│       │   └── models.go       # Character, Stats, Item, Spell, Quest, World, NPC...
 │       ├── repository/         # Data layer (Persistence)
 │       │   └── sqlite_repo.go  # SQLite operations (Save/Get/Delete Character)
 │       └── services/           # Orchestration logic
-│           └── game_manager.go # WebSocket management, Combat, Sync, DM actions
+│           ├── game_manager.go # Core game loop, WebSocket connections, sync
+│           ├── actions.go      # Action routing (player & DM registries)
+│           ├── player_actions.go # Player actions (move, attack, loot, quests...)
+│           ├── dm_actions.go   # DM admin actions
+│           ├── messages.go     # Typed WebSocket messages
+│           ├── world.go        # Default world, NPCs, world persistence
+│           └── persistence.go  # Async SQLite write queue
 │
 ├── frontend/                   # Player web app (Svelte + TypeScript)
 │   ├── src/
@@ -32,7 +38,7 @@ The project follows a clean modular architecture with strict separation between 
 │   │   │   ├── components/     # Atomic Design (Atoms, Molecules, Organisms)
 │   │   │   │   ├── atoms/      # Button, HPBar, Input, StatLabel
 │   │   │   │   ├── molecules/  # CharacterSheet, InventoryItem, LootItem
-│   │   │   │   └── organisms/  # ChatBox, LocationExplorer, LoginPage, GamePage
+│   │   │   │   └── organisms/  # ChatBox, LocationExplorer, QuestPanel, LoginPage, GamePage
 │   │   │   └── stores/
 │   │   │       └── game.ts     # Global store & WebSocket communication (TypeScript)
 │   │   └── routes/
@@ -47,7 +53,8 @@ The project follows a clean modular architecture with strict separation between 
     │   │   │   ├── StatsEditor.svelte       # Edit stats & HP
     │   │   │   ├── InventoryEditor.svelte   # Add/remove inventory items
     │   │   │   ├── SpellEditor.svelte       # Add/remove spells
-    │   │   │   ├── LocationManager.svelte   # Edit locations & loot
+    │   │   │   ├── QuestEditor.svelte       # Add/remove character quests
+    │   │   │   ├── LocationManager.svelte   # Edit locations, loot & quests
     │   │   │   ├── NPCManager.svelte        # Create/edit/delete NPCs
     │   │   │   └── ChatBox.svelte           # Event journal
     │   │   └── stores/
@@ -142,6 +149,8 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 * **Spell (`type: "cast_spell"`)**: `{"type": "cast_spell", "sort": "Nom", "cible": "Pseudo"}`
 * **Consumable (`type: "use_consumable"`)**: `{"type": "use_consumable", "item_name": "Potion de Soin"}`
 * **Loot (`type: "loot"`)**: `{"type": "loot", "loot_name": "Objet"}`
+* **Accept quest (`type: "accept_quest"`)**: `{"type": "accept_quest", "quest_name": "Nom"}`
+* **Complete quest (`type: "complete_quest"`)**: `{"type": "complete_quest", "quest_name": "Nom"}` — requires the `obstacle` items in the inventory (consumed on completion) and grants the `recompense` items
 
 ### Client -> Server Actions (Dungeon Master)
 | Action | Payload | Description |
@@ -160,10 +169,12 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 | `dm_move_npc` | `item_name`, `destination` | Move an NPC |
 | `dm_npc_add_item` / `dm_npc_remove_item` | `item_name`, `item` / `item_index` | Manage NPC inventory |
 | `dm_npc_add_spell` / `dm_npc_remove_spell` | `item_name`, `spell` / `item_index` | Manage NPC spells |
+| `dm_add_quest` / `dm_remove_quest` | `destination`, `quest` / `quest_index` | Add/remove a quest offered by a location |
+| `dm_add_quest_player` / `dm_remove_quest_player` | `target_player`, `quest` / `quest_index` | Assign/remove a quest on a specific character |
 
 ### Server -> Client Events
 1. **Chat (`type: "chat"`)**: Broadcasts game events to all players.
-2. **Sync (`type: "sync"`)**: Full state of all players, NPCs and locations. Includes `liste` (players), `npcs`, and `locations`.
+2. **Sync (`type: "sync"`)**: Full state of all players, NPCs and locations. Includes `liste` (players, with their active `quests`), `npcs`, and `locations` (with the `quests` offered at each location).
 
 ---
 
@@ -181,6 +192,7 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 * **Persistence**: Characters are saved to SQLite after every action
 * **Death**: Falling to 0 HP resurrects at the Taverne at full HP
 * **NPCs**: Managed by the DM only; NPCs are broadcast to players who see them at their current location
+* **Quêtes**: Locations offer quests (`accept_quest` / `complete_quest`); completing one requires every `obstacle` item in the inventory (consumed on completion) and grants the `recompense` items. The DM can also assign quests directly to a character (`dm_add_quest_player`)
 
 ---
 
@@ -194,12 +206,14 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 * **Class Selection**: Visual card-based class picker (Guerrier, Magicien, Voleur, Clerc, Barde, Ranger).
 * **Form Validation**: Real-time validation with error states on the login form.
 * **NPC Display**: NPCs present at the player's location are shown with their HP bar.
+* **Quest Panel**: Dedicated "Quêtes" tab listing active quests (with obstacle status and rewards) and the quests available at the current location (accept / complete buttons).
 
 ### Dungeon Master Panel
 * **Roster**: All connected adventurers with live HP and location, click to edit.
 * **Full Character Editor**: Stats, HP, alignment, location teleport, inventory, spells.
 * **NPC Manager**: Create, edit stats, move, equip inventory, assign spells, and delete NPCs.
-* **Location Manager**: Rename locations, edit descriptions, add/remove ground loot, see who's present.
+* **Quest Editor**: Assign quests to any character and remove them.
+* **Location Manager**: Rename locations, edit descriptions, add/remove ground loot and offered quests, see who's present.
 * **Event Journal**: Live chat log of every DM action broadcast to the world.
 
 ---
@@ -226,6 +240,7 @@ classDiagram
         +List~Item~ Inventaire
         +List~Sort~ Sorts
         +Equipement Equipement
+        +List~Quest~ Quests
         +string Lieu
     }
     class Stats {
@@ -267,7 +282,19 @@ classDiagram
         +string Background
         +List~Item~ Objects
         +Position Position
+        +List~Quest~ Quests
     }
+
+
+
+
+class Quest {
+        +string Nom
+        +string Objectif
+        +List~Item~ Obstacle
+        +List~Item~ Recompense
+    }
+    
     class GameManager {
         +Connections map~string, WS~
         +World World
@@ -282,16 +309,12 @@ classDiagram
         +resolveSpellAttack(attacker, target, sort) string
         +NotifyChange()
     }
-    World "1" o-- "*" Player
     World "1" o-- "*" Location
     World "1" o-- "*" Character : NPCs
     Player "1" o-- "*" Character
-    Character "1" *-- "1" Stats
-    Character "1" *-- "1" Equipement
     Character "1" *-- "*" Item : inventaire
     Character "1" *-- "*" Sort : sorts
-    Character "1" o-- "1" Location : lieu
-    Equipement "1" o-- "0..1" Item : arme
-    Equipement "1" o-- "0..1" Item : armure
+    Character "1" *-- "*" Quest : quêtes
     GameManager "1" *-- "1" World
+    Location o--> Quest
 ```

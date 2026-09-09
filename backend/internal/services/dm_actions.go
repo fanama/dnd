@@ -335,3 +335,66 @@ func (gm *GameManager) dmNPCRemoveSpell(name string, index int) {
 	gm.persistWorld()
 	gm.NotifyChange()
 }
+
+// --- Quest management (DM only) ---
+
+func (gm *GameManager) dmAddQuest(locationName string, quest domain.Quest) {
+	if quest.Nom == "" {
+		return
+	}
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == locationName {
+			gm.World.Locations[i].Quests = append(gm.World.Locations[i].Quests, quest)
+			gm.chat("📌 Le MDJ a ajouté la quête « %s » à %s.", quest.Nom, locationName)
+			gm.persistWorld()
+			gm.NotifyChange()
+			return
+		}
+	}
+}
+
+func (gm *GameManager) dmRemoveQuest(locationName string, index int) {
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == locationName {
+			loc := &gm.World.Locations[i]
+			if index < 0 || index >= len(loc.Quests) {
+				return
+			}
+			removed := loc.Quests[index]
+			loc.Quests = append(loc.Quests[:index], loc.Quests[index+1:]...)
+			gm.chat("🗑️ Le MDJ a retiré la quête « %s » de %s.", removed.Nom, locationName)
+			gm.persistWorld()
+			gm.NotifyChange()
+			return
+		}
+	}
+}
+
+func (gm *GameManager) dmAddPlayerQuest(targetPseudo string, quest domain.Quest) {
+	char := gm.getLatestCharacter(targetPseudo)
+	if char == nil || quest.Nom == "" {
+		return
+	}
+	for _, q := range char.Quests {
+		if q.Nom == quest.Nom {
+			gm.chat("⚠️ %s a déjà la quête « %s ».", char.Stats.Nom, quest.Nom)
+			return
+		}
+	}
+	char.Quests = append(char.Quests, quest)
+	gm.saveCharacterState(targetPseudo, char)
+	gm.chat("📜 Le MDJ a confié la quête « %s » à %s.", quest.Nom, char.Stats.Nom)
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmRemovePlayerQuest(targetPseudo string, index int) {
+	char := gm.getLatestCharacter(targetPseudo)
+	if char == nil || index < 0 || index >= len(char.Quests) {
+		return
+	}
+	removed := char.Quests[index]
+	char.Quests = append(char.Quests[:index], char.Quests[index+1:]...)
+	gm.saveCharacterState(targetPseudo, char)
+	gm.chat("🚫 Le MDJ a retiré la quête « %s » de %s.", removed.Nom, char.Stats.Nom)
+	gm.NotifyChange()
+}

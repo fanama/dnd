@@ -37,6 +37,13 @@ type Sort struct {
 	Duree      string  `json:"duree"`
 }
 
+type Quest struct {
+	Nom        string `json:"nom"`
+	Objectif   string `json:"objectif"`
+	Obstacle   []Item `json:"obstacle,omitempty"`
+	Recompense []Item `json:"recompense,omitempty"`
+}
+
 type Item struct {
 	Nom          string  `json:"nom"`
 	Prix         float64 `json:"prix"`
@@ -59,6 +66,7 @@ type Character struct {
 	Inventaire []Item    `json:"inventaire"`
 	Sorts      []Sort    `json:"sorts"`
 	Equipement Equipment `json:"equipement"`
+	Quests     []Quest   `json:"quests"`
 	Lieu       string    `json:"lieu"`
 }
 
@@ -68,9 +76,10 @@ type Player struct {
 }
 
 type Location struct {
-	Nom        string `json:"nom"`
-	Background string `json:"background"`
-	Objects    []Item `json:"objects"`
+	Nom        string  `json:"nom"`
+	Background string  `json:"background"`
+	Objects    []Item  `json:"objects"`
+	Quests     []Quest `json:"quests,omitempty"`
 	Position   struct {
 		X float64 `json:"x"`
 		Y float64 `json:"y"`

@@ -4,6 +4,8 @@
     export let onAddItem = (location, item) => {};
     export let onRemoveItem = (location, index) => {};
     export let onEditLocation = (oldName, newName, newBg) => {};
+    export let onAddQuest = (location, quest) => {};
+    export let onRemoveQuest = (location, index) => {};
 
     let expandedLoc = null;
     let newItem = { nom: '', prix: 0, isConsumable: false, bonusDegats: 0, bonusArmure: 0 };
@@ -11,6 +13,8 @@
     let editName = '';
     let editBg = '';
     let editingLoc = null;
+    let newQuest = { nom: '', objectif: '', obstacle: '', recompense: '' };
+    let showQuestFor = null;
 
     function toggle(loc) {
         expandedLoc = expandedLoc === loc ? null : loc;
@@ -42,6 +46,32 @@
 
     function playersAt(locationName) {
         return Object.entries(players).filter(([, v]) => v.lieu === locationName && !v.role).length;
+    }
+
+    function parseItems(str) {
+        return (str || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((nom) => ({
+                nom,
+                prix: 0,
+                isConsumable: false,
+                bonusDegats: 0,
+                bonusArmure: 0,
+            }));
+    }
+
+    function addQuest(loc) {
+        if (!newQuest.nom.trim()) return;
+        onAddQuest(loc, {
+            nom: newQuest.nom.trim(),
+            objectif: newQuest.objectif.trim(),
+            obstacle: parseItems(newQuest.obstacle),
+            recompense: parseItems(newQuest.recompense),
+        });
+        newQuest = { nom: '', objectif: '', obstacle: '', recompense: '' };
+        showQuestFor = null;
     }
 
     function locIcon(nom) {
@@ -146,6 +176,40 @@
                         {:else}
                             <button class="btn-add-obj" on:click={() => showAddFor = loc.nom}>
                                 + Ajouter un objet
+                            </button>
+                        {/if}
+
+                        <!-- Quests -->
+                        {#each (loc.quests || []) as quest, qi}
+                            <div class="loc-item quest">
+                                <span class="item-icon">🧭</span>
+                                <div class="quest-info">
+                                    <span class="item-name">{quest.nom}</span>
+                                    {#if quest.objectif}<span class="quest-objectif">{quest.objectif}</span>{/if}
+                                    {#if quest.recompense && quest.recompense.length > 0}
+                                        <span class="quest-rewards">
+                                            🎁 {quest.recompense.map((r) => r.nom).join(', ')}
+                                        </span>
+                                    {/if}
+                                </div>
+                                <button class="btn-remove" on:click={() => onRemoveQuest(loc.nom, qi)}>✕</button>
+                            </div>
+                        {/each}
+
+                        {#if showQuestFor === loc.nom}
+                            <div class="add-form fade-in">
+                                <input class="form-input" bind:value={newQuest.nom} placeholder="Nom de la quête" />
+                                <input class="form-input" bind:value={newQuest.objectif} placeholder="Objectif" />
+                                <input class="form-input" bind:value={newQuest.obstacle} placeholder="Requis (objets, séparés par des virgules)" />
+                                <input class="form-input" bind:value={newQuest.recompense} placeholder="Récompenses (objets, séparés par des virgules)" />
+                                <div class="form-actions">
+                                    <button class="btn-cancel" on:click={() => showQuestFor = null}>Annuler</button>
+                                    <button class="btn-add" on:click={() => addQuest(loc.nom)}>Ajouter</button>
+                                </div>
+                            </div>
+                        {:else}
+                            <button class="btn-add-obj" on:click={() => showQuestFor = loc.nom}>
+                                + Ajouter une quête
                             </button>
                         {/if}
                     </div>
@@ -313,6 +377,32 @@
         font-family: 'MedievalSharp', cursive;
         color: #c5a059;
         font-size: 0.8rem;
+    }
+
+    .loc-item.quest {
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        background: rgba(69, 39, 160, 0.1);
+    }
+
+    .quest-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+    }
+
+    .quest-objectif {
+        font-family: 'Alegreya', serif;
+        color: #7a6f5f;
+        font-size: 0.7rem;
+        font-style: italic;
+    }
+
+    .quest-rewards {
+        font-family: 'Alegreya', serif;
+        color: #c5a059;
+        font-size: 0.7rem;
     }
 
     .btn-remove {

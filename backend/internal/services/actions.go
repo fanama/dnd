@@ -19,6 +19,8 @@ func (gm *GameManager) registerActions() {
 		"loot":           func(gm *GameManager, c *domain.Character, a Action) { gm.actionLoot(c, a.LootName) },
 		"equip_item":     func(gm *GameManager, c *domain.Character, a Action) { gm.actionEquip(c, a.ItemName) },
 		"unequip_item":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionUnequip(c, a.Slot) },
+		"accept_quest":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionAcceptQuest(c, a.QuestName) },
+		"complete_quest": func(gm *GameManager, c *domain.Character, a Action) { gm.actionCompleteQuest(c, a.QuestName) },
 	}
 
 	gm.dmActions = map[string]dmActionFn{
@@ -44,5 +46,11 @@ func (gm *GameManager) registerActions() {
 		"dm_npc_remove_item":  func(gm *GameManager, a Action) { gm.dmNPCRemoveItem(a.ItemName, a.ItemIndex) },
 		"dm_npc_add_spell":    func(gm *GameManager, a Action) { gm.dmNPCAddSpell(a.ItemName, a.Spell) },
 		"dm_npc_remove_spell": func(gm *GameManager, a Action) { gm.dmNPCRemoveSpell(a.ItemName, a.ItemIndex) },
+		"dm_add_quest":        func(gm *GameManager, a Action) { gm.dmAddQuest(a.Destination, a.Quest) },
+		"dm_remove_quest":     func(gm *GameManager, a Action) { gm.dmRemoveQuest(a.Destination, a.QuestIndex) },
+		"dm_add_quest_player": func(gm *GameManager, a Action) { gm.dmAddPlayerQuest(a.TargetPlayer, a.Quest) },
+		"dm_remove_quest_player": func(gm *GameManager, a Action) {
+			gm.dmRemovePlayerQuest(a.TargetPlayer, a.QuestIndex)
+		},
 	}
 }

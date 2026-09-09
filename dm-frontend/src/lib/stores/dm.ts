@@ -33,6 +33,13 @@ export interface Equipment {
     armure: Item | null;
 }
 
+export interface Quest {
+    nom: string;
+    objectif: string;
+    obstacle: Item[];
+    recompense: Item[];
+}
+
 export interface PlayerData {
     nom: string;
     lieu: string;
@@ -44,6 +51,7 @@ export interface PlayerData {
     inventaire: Item[];
     sorts: Sort[];
     equipement: Equipment;
+    quests?: Quest[];
     role: boolean;
     is_npc?: boolean;
 }
@@ -52,6 +60,7 @@ export interface Location {
     nom: string;
     background: string;
     objects: Item[];
+    quests?: Quest[];
     position?: { x: number; y: number };
 }
 

@@ -2,6 +2,7 @@
     import CharacterSheet from '../../molecules/CharacterSheet.svelte';
     import LocationExplorer from '../LocationExplorer.svelte';
     import ChatBox from '../ChatBox.svelte';
+    import QuestPanel from '../QuestPanel.svelte';
     import Button from '../../atoms/Button.svelte';
     import HPBar from '../../atoms/HPBar.svelte';
     import { myStats, myDerivedStats } from '../../../stores/game';
@@ -13,6 +14,8 @@
     export let onLootItem = (name) => {};
     export let onEquip = (name) => {};
     export let onUnequip = (slot) => {};
+    export let onAcceptQuest = (name) => {};
+    export let onCompleteQuest = (name) => {};
 
     let activeTab = 'charsheet';
 
@@ -87,6 +90,14 @@
         >
             <span class="tab-icon">🎒</span>
             <span class="tab-label">Équipement</span>
+        </button>
+        <button
+            class="view-tab"
+            class:active={activeTab === 'quests'}
+            on:click={() => activeTab = 'quests'}
+        >
+            <span class="tab-icon">🧭</span>
+            <span class="tab-label">Quêtes</span>
         </button>
         <button
             class="view-tab"
@@ -243,6 +254,19 @@
                     </div>
                 {/if}
             </div>
+        </section>
+    {/if}
+
+    <!-- ============ QUESTS VIEW ============ -->
+    {#if activeTab === 'quests'}
+        <section class="view-panel fade-in">
+            <QuestPanel
+                myQuests={myStatsData?.quests || []}
+                locationQuests={gameState.currentLocationQuests || []}
+                inventory={myStatsData?.inventaire || []}
+                onAccept={onAcceptQuest}
+                onComplete={onCompleteQuest}
+            />
         </section>
     {/if}
 

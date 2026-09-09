@@ -29,6 +29,9 @@ type Action struct {
 	NewName      string       `json:"new_name,omitempty"`
 	LocationBg   string       `json:"location_bg,omitempty"`
 	Slot         string       `json:"slot,omitempty"`
+	Quest        domain.Quest `json:"quest,omitempty"`
+	QuestName    string       `json:"quest_name,omitempty"`
+	QuestIndex   int          `json:"quest_index,omitempty"`
 }
 
 type GameManager struct {
@@ -91,7 +94,7 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 	}
 
 	// 1. Attempt to restore from DB
-	_, _, lieu, pv, _, invStr, statsStr, equipStr, err := gm.Repo.GetCharacter(pseudo)
+	_, _, lieu, pv, _, invStr, statsStr, equipStr, questsStr, err := gm.Repo.GetCharacter(pseudo)
 	if err == nil {
 		var stats domain.Stats
 		json.Unmarshal([]byte(statsStr), &stats)
@@ -99,6 +102,8 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 		json.Unmarshal([]byte(invStr), &inventory)
 		var equip domain.Equipment
 		json.Unmarshal([]byte(equipStr), &equip)
+		var quests []domain.Quest
+		json.Unmarshal([]byte(questsStr), &quests)
 
 		char := &domain.Character{
 			ID:         uuid.New(),
@@ -108,6 +113,7 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 			Lieu:       lieu,
 			Inventaire: inventory,
 			Equipement: equip,
+			Quests:     quests,
 		}
 		player.Characters = append(player.Characters, char)
 		gm.chat("👋 %s est revenu dans le monde !", pseudo)
@@ -238,13 +244,14 @@ func (gm *GameManager) saveCharacterState(pseudo string, char *domain.Character)
 	statsJSON, _ := json.Marshal(char.Stats)
 	invJSON, _ := json.Marshal(char.Inventaire)
 	equipJSON, _ := json.Marshal(char.Equipement)
+	questsJSON, _ := json.Marshal(char.Quests)
 	nom := char.Stats.Nom
 	classe := char.Stats.Background
 	lieu := char.Lieu
 	pv := int(char.CurrentPV)
 	maxPV := int(char.Stats.CalculateLifePoints())
 	gm.persister.Enqueue(func() {
-		gm.Repo.SaveCharacter(pseudo, nom, classe, lieu, pv, maxPV, string(invJSON), string(statsJSON), string(equipJSON))
+		gm.Repo.SaveCharacter(pseudo, nom, classe, lieu, pv, maxPV, string(invJSON), string(statsJSON), string(equipJSON), string(questsJSON))
 	})
 }
 
@@ -271,6 +278,7 @@ func (gm *GameManager) NotifyChange() {
 				Sorts:      char.Sorts,
 				Inventaire: char.Inventaire,
 				Equipement: char.Equipement,
+				Quests:     char.Quests,
 				Stats:      char.Stats,
 				Role:       gm.DMs[pseudo],
 			}

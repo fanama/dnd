@@ -37,12 +37,16 @@ func createTables(db *sql.DB) error {
 		lieu TEXT,
 		inventaire TEXT,
 		stats TEXT,
-		equipement TEXT
+		equipement TEXT,
+		quests TEXT
 	);`
 	if _, err := db.Exec(query); err != nil {
 		return err
 	}
 	if err := ensureColumn(db, "characters", "equipement"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "characters", "quests"); err != nil {
 		return err
 	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS world_state (
@@ -69,15 +73,15 @@ func ensureColumn(db *sql.DB, table, column string) error {
 	return err
 }
 
-func (r *SQLiteRepository) SaveCharacter(pseudo, nom, classe, lieu string, pv, maxPv int, inventaire, stats, equipement string) error {
-	query := `INSERT OR REPLACE INTO characters (pseudo, nom, classe, pv, max_pv, lieu, inventaire, stats, equipement) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := r.db.Exec(query, pseudo, nom, classe, lieu, pv, maxPv, inventaire, stats, equipement)
+func (r *SQLiteRepository) SaveCharacter(pseudo, nom, classe, lieu string, pv, maxPv int, inventaire, stats, equipement, quests string) error {
+	query := `INSERT OR REPLACE INTO characters (pseudo, nom, classe, lieu, pv, max_pv, inventaire, stats, equipement, quests) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := r.db.Exec(query, pseudo, nom, classe, lieu, pv, maxPv, inventaire, stats, equipement, quests)
 	return err
 }
 
-func (r *SQLiteRepository) GetCharacter(pseudo string) (nom, classe, lieu string, pv, maxPv int, inventaire, stats, equipement string, err error) {
-	query := `SELECT nom, classe, lieu, pv, max_pv, inventaire, stats, equipement FROM characters WHERE pseudo = ?`
-	err = r.db.QueryRow(query, pseudo).Scan(&nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats, &equipement)
+func (r *SQLiteRepository) GetCharacter(pseudo string) (nom, classe, lieu string, pv, maxPv int, inventaire, stats, equipement, quests string, err error) {
+	query := `SELECT nom, classe, lieu, pv, max_pv, inventaire, stats, equipement, COALESCE(quests, '') FROM characters WHERE pseudo = ?`
+	err = r.db.QueryRow(query, pseudo).Scan(&nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats, &equipement, &quests)
 	return
 }
 
@@ -88,10 +92,10 @@ func (r *SQLiteRepository) DeleteCharacter(pseudo string) error {
 }
 
 func (r *SQLiteRepository) GetAllCharacters() (map[string]struct {
-	Nom, Classe, Lieu, Inventaire, Stats, Equipement string
-	PV, MaxPV                                        int
+	Nom, Classe, Lieu, Inventaire, Stats, Equipement, Quests string
+	PV, MaxPV                                                int
 }, error) {
-	query := `SELECT pseudo, nom, classe, lieu, pv, max_pv, inventaire, stats, equipement FROM characters`
+	query := `SELECT pseudo, nom, classe, lieu, pv, max_pv, inventaire, stats, equipement, COALESCE(quests, '') FROM characters`
 	rows, err := r.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -99,20 +103,20 @@ func (r *SQLiteRepository) GetAllCharacters() (map[string]struct {
 	defer rows.Close()
 
 	result := make(map[string]struct {
-		Nom, Classe, Lieu, Inventaire, Stats, Equipement string
-		PV, MaxPV                                        int
+		Nom, Classe, Lieu, Inventaire, Stats, Equipement, Quests string
+		PV, MaxPV                                                int
 	})
 	for rows.Next() {
-		var pseudo, nom, classe, lieu, inventaire, stats, equipement string
+		var pseudo, nom, classe, lieu, inventaire, stats, equipement, quests string
 		var pv, maxPv int
-		if err := rows.Scan(&pseudo, &nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats, &equipement); err != nil {
+		if err := rows.Scan(&pseudo, &nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats, &equipement, &quests); err != nil {
 			continue
 		}
 		result[pseudo] = struct {
-			Nom, Classe, Lieu, Inventaire, Stats, Equipement string
-			PV, MaxPV                                        int
+			Nom, Classe, Lieu, Inventaire, Stats, Equipement, Quests string
+			PV, MaxPV                                                int
 		}{
-			Nom: nom, Classe: classe, Lieu: lieu, Inventaire: inventaire, Stats: stats, Equipement: equipement, PV: pv, MaxPV: maxPv,
+			Nom: nom, Classe: classe, Lieu: lieu, Inventaire: inventaire, Stats: stats, Equipement: equipement, Quests: quests, PV: pv, MaxPV: maxPv,
 		}
 	}
 	return result, nil

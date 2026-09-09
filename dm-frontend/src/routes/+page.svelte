@@ -5,6 +5,7 @@
     import StatsEditor from '../lib/components/StatsEditor.svelte';
     import InventoryEditor from '../lib/components/InventoryEditor.svelte';
     import SpellEditor from '../lib/components/SpellEditor.svelte';
+    import QuestEditor from '../lib/components/QuestEditor.svelte';
     import LocationManager from '../lib/components/LocationManager.svelte';
     import NPCManager from '../lib/components/NPCManager.svelte';
     import ChatBox from '../lib/components/ChatBox.svelte';
@@ -241,6 +242,12 @@
                                     ? dmAction('dm_npc_remove_spell', { item_name: selected, item_index: index })
                                     : dmAction('dm_remove_spell', { target_player: selected, item_index: index })}
                             />
+
+                            <QuestEditor
+                                quests={selectedData.quests || []}
+                                onAdd={(quest) => dmAction('dm_add_quest_player', { target_player: selected, quest })}
+                                onRemove={(index) => dmAction('dm_remove_quest_player', { target_player: selected, quest_index: index })}
+                            />
                         </div>
                     {:else}
                         <div class="empty-editor">
@@ -258,6 +265,8 @@
                         onAddItem={(loc, item) => dmAction('dm_teleport_item_add', { destination: loc, item })}
                         onRemoveItem={(loc, idx) => dmAction('dm_teleport_item_remove', { destination: loc, item_index: idx })}
                         onEditLocation={(oldName, newName, newBg) => dmAction('dm_edit_location', { destination: oldName, new_name: newName, location_bg: newBg })}
+                        onAddQuest={(loc, quest) => dmAction('dm_add_quest', { destination: loc, quest })}
+                        onRemoveQuest={(loc, idx) => dmAction('dm_remove_quest', { destination: loc, quest_index: idx })}
                     />
 
                     <NPCManager

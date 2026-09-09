@@ -333,3 +333,87 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 	gm.chat("🎒 %s a ramassé %s dans %s !", char.Stats.Nom, item.Nom, char.Lieu)
 	gm.persistWorld()
 }
+
+func (gm *GameManager) actionAcceptQuest(char *domain.Character, questName string) {
+	quest := gm.findLocationQuest(char.Lieu, questName)
+	if quest == nil {
+		return
+	}
+	for _, q := range char.Quests {
+		if q.Nom == quest.Nom {
+			gm.chat("⚠️ %s a déjà accepté la quête « %s ».", char.Stats.Nom, quest.Nom)
+			return
+		}
+	}
+	char.Quests = append(char.Quests, *quest)
+	gm.chat("📜 %s a accepté la quête « %s » : %s", char.Stats.Nom, quest.Nom, quest.Objectif)
+}
+
+func (gm *GameManager) actionCompleteQuest(char *domain.Character, questName string) {
+	idx := -1
+	for i, q := range char.Quests {
+		if q.Nom == questName {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		gm.chat("❌ %s n'a pas accepté la quête « %s ».", char.Stats.Nom, questName)
+		return
+	}
+	quest := char.Quests[idx]
+
+	// The obstacle items must be present in the inventory to complete the quest.
+	if len(quest.Obstacle) > 0 {
+		for _, need := range quest.Obstacle {
+			if !gm.hasItem(char.Inventaire, need.Nom) {
+				gm.chat("🥾 Il manque « %s » à %s pour terminer la quête « %s ».", need.Nom, char.Stats.Nom, quest.Nom)
+				return
+			}
+		}
+		for _, need := range quest.Obstacle {
+			char.Inventaire = gm.removeItem(char.Inventaire, need.Nom)
+		}
+		gm.chat("🧾 %s remet les objets requis de la quête « %s ».", char.Stats.Nom, quest.Nom)
+	}
+
+	for _, reward := range quest.Recompense {
+		char.Inventaire = append(char.Inventaire, reward)
+	}
+	char.Quests = append(char.Quests[:idx], char.Quests[idx+1:]...)
+	gm.chat("🏆 %s a terminé la quête « %s » !", char.Stats.Nom, quest.Nom)
+}
+
+// findLocationQuest looks up a quest by name in a location's available quests.
+func (gm *GameManager) findLocationQuest(locationName, questName string) *domain.Quest {
+	for i := range gm.World.Locations {
+		loc := &gm.World.Locations[i]
+		if loc.Nom != locationName {
+			continue
+		}
+		for j := range loc.Quests {
+			if loc.Quests[j].Nom == questName {
+				return &loc.Quests[j]
+			}
+		}
+	}
+	return nil
+}
+
+func (gm *GameManager) hasItem(items []domain.Item, name string) bool {
+	for _, it := range items {
+		if it.Nom == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (gm *GameManager) removeItem(items []domain.Item, name string) []domain.Item {
+	for i, it := range items {
+		if it.Nom == name {
+			return append(items[:i], items[i+1:]...)
+		}
+	}
+	return items
+}

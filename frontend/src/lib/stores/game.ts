@@ -22,6 +22,13 @@ export interface Equipment {
     armure: Item | null;
 }
 
+export interface Quest {
+    nom: string;
+    objectif: string;
+    obstacle: Item[];
+    recompense: Item[];
+}
+
 export interface PlayerStats {
     nom: string;
     lieu: string;
@@ -40,12 +47,14 @@ export interface PlayerStats {
     inventaire: Item[];
     sorts: Sort[];
     equipement: Equipment;
+    quests: Quest[];
 }
 
 export interface Location {
     nom: string;
     background: string;
     objects: Item[];
+    quests?: Quest[];
 }
 
 export interface GameState {
@@ -55,6 +64,7 @@ export interface GameState {
     npcs: any[];
     logs: string[];
     currentLocationObjects: Item[];
+    currentLocationQuests: Quest[];
     locations: Location[];
 }
 
@@ -62,7 +72,7 @@ export interface SyncData {
     type: 'sync';
     liste: Record<string, PlayerStats>;
     npcs?: any;
-    locations?: { nom: string; objects: Item[] }[];
+    locations?: { nom: string; objects: Item[]; quests?: Quest[] }[];
 }
 
 interface ChatData {
@@ -149,6 +159,7 @@ export const gameState = writable<GameState>({
     npcs: [],
     logs: [],
     currentLocationObjects: [],
+    currentLocationQuests: [],
     locations: []
 });
 
@@ -187,9 +198,13 @@ export function connect(pseudo: string, charName: string, charClass: string): vo
                 const myStats = data.liste[pseudo];
 
                 let currentLocationObjects: Item[] = [];
+                let currentLocationQuests: Quest[] = [];
                 if (data.locations) {
                     const loc = data.locations.find(l => l.nom === (myStats ? myStats.lieu : s.location));
-                    if (loc) currentLocationObjects = loc.objects;
+                    if (loc) {
+                        currentLocationObjects = loc.objects;
+                        currentLocationQuests = loc.quests || [];
+                    }
                 }
 
                 const npcList = data.npcs ? Object.values(data.npcs) : [];
@@ -201,6 +216,7 @@ export function connect(pseudo: string, charName: string, charClass: string): vo
                     npcs: currentNpcs,
                     location: myStats ? myStats.lieu : s.location,
                     currentLocationObjects: currentLocationObjects,
+                    currentLocationQuests: currentLocationQuests,
                     locations: data.locations || s.locations
                 };
             });
