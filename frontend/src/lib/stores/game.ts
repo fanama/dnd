@@ -17,6 +17,11 @@ export interface Sort {
     duree: string;
 }
 
+export interface Equipment {
+    arme: Item | null;
+    armure: Item | null;
+}
+
 export interface PlayerStats {
     nom: string;
     lieu: string;
@@ -34,6 +39,7 @@ export interface PlayerStats {
     };
     inventaire: Item[];
     sorts: Sort[];
+    equipement: Equipment;
 }
 
 export interface Location {
@@ -64,14 +70,68 @@ interface ChatData {
     msg: string;
 }
 
-export function getDerivedStats(s: PlayerStats | undefined) {
+export function abilityModifier(stat: number): number {
+    return Math.floor(((stat || 10) - 10) / 2);
+}
+
+export function normalizeName(name: string): string {
+    return (name || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+export interface WeaponInfo {
+    sides: number;
+    ranged: boolean;
+    label: string;
+}
+
+export function getWeaponInfo(item: Item | null): WeaponInfo {
+    if (!item) return { sides: 2, ranged: false, label: '1d2' };
+    const n = normalizeName(item.nom);
+    if (n.includes('dague')) return { sides: 4, ranged: false, label: '1d4' };
+    if (n.includes('arbalete') || n.includes('carquois')) return { sides: 8, ranged: true, label: '1d8' };
+    if (n.includes('arc')) return { sides: 8, ranged: true, label: '1d8' };
+    if (n.includes('epee')) return { sides: 6, ranged: false, label: '1d6' };
+    return { sides: 6, ranged: false, label: '1d6' };
+}
+
+function signed(v: number): string {
+    return v > 0 ? `+${v}` : `${v}`;
+}
+
+export interface DerivedStats {
+    maxPv: number;
+    ac: number;
+    attackMod: number;
+    damageMod: number;
+    damageDice: string;
+    weaponName: string;
+    ranged: boolean;
+}
+
+export function getDerivedStats(s: PlayerStats | undefined): DerivedStats {
     if (!s || !s.stats) {
-        return { maxPv: 100, armor: 0, damage: 0 };
+        return { maxPv: 100, ac: 10, attackMod: 0, damageMod: 0, damageDice: '1d2', weaponName: 'Mains nues', ranged: false };
     }
     const maxPv = Math.floor((s.stats.constitution || 10) * 10);
-    const armor = Math.floor((s.stats.vitesse || 10) * 1.5);
-    const damage = Math.floor((s.stats.force || 10) * 2);
-    return { maxPv, armor, damage };
+    const weapon = s.equipement?.arme || null;
+    const armor = s.equipement?.armure || null;
+    const weaponInfo = getWeaponInfo(weapon);
+    const attackStat = weaponInfo.ranged ? (s.stats.vitesse || 10) : (s.stats.force || 10);
+    const attackMod = abilityModifier(attackStat) + (weapon?.bonusDegats || 0);
+    const damageMod = abilityModifier(attackStat);
+    const ac = 10 + abilityModifier(s.stats.vitesse || 10) + (armor?.bonusArmure || 0);
+    return {
+        maxPv,
+        ac,
+        attackMod,
+        damageMod,
+        damageDice: `${weaponInfo.label}${signed(damageMod)}`,
+        weaponName: weapon?.nom || 'Mains nues',
+        ranged: weaponInfo.ranged
+    };
 }
 
 export function getItemCategory(item: Item | string): 'weapon' | 'armor' | 'consumable' | 'misc' {

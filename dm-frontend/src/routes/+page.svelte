@@ -213,6 +213,7 @@
                                 pv={selectedData.pv}
                                 maxPv={selectedData.max_pv}
                                 isNpc={selectedIsNpc}
+                                equipement={selectedData.equipement || { arme: null, armure: null }}
                                 onSave={(stats) => selectedIsNpc
                                     ? dmAction('dm_edit_npc', { item_name: selected, stats, pv: 0, alignement: '', overwrite: true })
                                     : dmAction('dm_edit_stats', { target_player: selected, stats })}

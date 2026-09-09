@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 
 	"dnd-backend/internal/domain"
@@ -56,6 +57,7 @@ type Action struct {
 	Overwrite    bool         `json:"overwrite,omitempty"`
 	NewName      string       `json:"new_name,omitempty"`
 	LocationBg   string       `json:"location_bg,omitempty"`
+	Slot         string       `json:"slot,omitempty"`
 }
 
 type GameManager struct {
@@ -75,36 +77,36 @@ func NewGameManager(repo *repository.SQLiteRepository) *GameManager {
 			ID:      uuid.New(),
 			Players: make(map[string]*domain.Player),
 			NPCs:    make(map[string]*domain.Character),
-		Locations: []domain.Location{
-			{Nom: "Taverne", Background: "Ambiance chaleureuse, odeur de biere", Objects: []domain.Item{
-				{Nom: "Vieille Carte", IsConsumable: false, Prix: 10},
-				{Nom: "Chope de Biere", IsConsumable: true, Prix: 5},
-			}},
-			{Nom: "Donjon", Background: "Sombre et humide, murs couverts de mousse", Objects: []domain.Item{
-				{Nom: "Épée Rouillée", IsConsumable: false, BonusDégâts: 2, Prix: 40},
-				{Nom: "Potion de Soin", IsConsumable: true, Prix: 25},
-			}},
-			{Nom: "Foret Enchantee", Background: "Arbres millenaires, lumiere filtreee", Objects: []domain.Item{
-				{Nom: "Herbes Medecinales", IsConsumable: true, Prix: 20},
-				{Nom: "Arc Elfe", IsConsumable: false, BonusDégâts: 4, Prix: 85},
-			}},
-			{Nom: "Montagne Rocheuse", Background: "Pics aceres, vent glacial", Objects: []domain.Item{
-				{Nom: "Haches de Guerre", IsConsumable: false, BonusDégâts: 6, Prix: 130},
-				{Nom: "Gantelets de Fer", IsConsumable: false, BonusArmure: 3, Prix: 90},
-			}},
-			{Nom: "Marais Hante", Background: "Brume epaisse, craquements suspects", Objects: []domain.Item{
-				{Nom: "Potion d'Invisibilite", IsConsumable: true, Prix: 50},
-				{Nom: "Fiole de Venom", IsConsumable: true, Prix: 35},
-			}},
-			{Nom: "Plaine des Conflits", Background: "Champ de bataille, drapeaux dechu", Objects: []domain.Item{
-				{Nom: "Bouclier en Bois", IsConsumable: false, BonusArmure: 2, Prix: 40},
-				{Nom: "Lance Percutante", IsConsumable: false, BonusDégâts: 5, Prix: 95},
-			}},
-			{Nom: "Temple Abandonne", Background: "Piliers brises, ombres dansantes", Objects: []domain.Item{
-				{Nom: "Sceptre Sacre", IsConsumable: false, BonusDégâts: 7, Prix: 160},
-				{Nom: "Parchemin Ancien", IsConsumable: false, Prix: 35},
-			}},
-		},
+			Locations: []domain.Location{
+				{Nom: "Taverne", Background: "Ambiance chaleureuse, odeur de biere", Objects: []domain.Item{
+					{Nom: "Vieille Carte", IsConsumable: false, Prix: 10},
+					{Nom: "Chope de Biere", IsConsumable: true, Prix: 5},
+				}},
+				{Nom: "Donjon", Background: "Sombre et humide, murs couverts de mousse", Objects: []domain.Item{
+					{Nom: "Épée Rouillée", IsConsumable: false, BonusDégâts: 2, Prix: 40},
+					{Nom: "Potion de Soin", IsConsumable: true, Prix: 25},
+				}},
+				{Nom: "Foret Enchantee", Background: "Arbres millenaires, lumiere filtreee", Objects: []domain.Item{
+					{Nom: "Herbes Medecinales", IsConsumable: true, Prix: 20},
+					{Nom: "Arc Elfe", IsConsumable: false, BonusDégâts: 4, Prix: 85},
+				}},
+				{Nom: "Montagne Rocheuse", Background: "Pics aceres, vent glacial", Objects: []domain.Item{
+					{Nom: "Haches de Guerre", IsConsumable: false, BonusDégâts: 6, Prix: 130},
+					{Nom: "Gantelets de Fer", IsConsumable: false, BonusArmure: 3, Prix: 90},
+				}},
+				{Nom: "Marais Hante", Background: "Brume epaisse, craquements suspects", Objects: []domain.Item{
+					{Nom: "Potion d'Invisibilite", IsConsumable: true, Prix: 50},
+					{Nom: "Fiole de Venom", IsConsumable: true, Prix: 35},
+				}},
+				{Nom: "Plaine des Conflits", Background: "Champ de bataille, drapeaux dechu", Objects: []domain.Item{
+					{Nom: "Bouclier en Bois", IsConsumable: false, BonusArmure: 2, Prix: 40},
+					{Nom: "Lance Percutante", IsConsumable: false, BonusDégâts: 5, Prix: 95},
+				}},
+				{Nom: "Temple Abandonne", Background: "Piliers brises, ombres dansantes", Objects: []domain.Item{
+					{Nom: "Sceptre Sacre", IsConsumable: false, BonusDégâts: 7, Prix: 160},
+					{Nom: "Parchemin Ancien", IsConsumable: false, Prix: 35},
+				}},
+			},
 		},
 	}
 	gm.seedDefaultNPCs()
@@ -113,9 +115,9 @@ func NewGameManager(repo *repository.SQLiteRepository) *GameManager {
 
 func (gm *GameManager) seedDefaultNPCs() {
 	defaults := []struct {
-		name, lieu, classe, align string
+		name, lieu, classe, align           string
 		pv, force, con, vit, cha, sav, inst float64
-		items []domain.Item
+		items                               []domain.Item
 	}{
 		{"Arnold le Tavernier", "Taverne", "Aubergiste", "Neutre Bon", 60, 12, 12, 10, 14, 10, 10,
 			[]domain.Item{{Nom: "Chope de Biere", IsConsumable: true, Prix: 5}}},
@@ -167,12 +169,14 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 	}
 
 	// 1. Attempt to restore from DB
-	_, _, lieu, pv, _, invStr, statsStr, err := gm.Repo.GetCharacter(pseudo)
+	_, _, lieu, pv, _, invStr, statsStr, equipStr, err := gm.Repo.GetCharacter(pseudo)
 	if err == nil {
 		var stats domain.Stats
 		json.Unmarshal([]byte(statsStr), &stats)
 		var inventory []domain.Item
 		json.Unmarshal([]byte(invStr), &inventory)
+		var equip domain.Equipment
+		json.Unmarshal([]byte(equipStr), &equip)
 
 		char := &domain.Character{
 			ID:         uuid.New(),
@@ -181,6 +185,7 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 			CurrentPV:  float64(pv),
 			Lieu:       lieu,
 			Inventaire: inventory,
+			Equipement: equip,
 		}
 		player.Characters = append(player.Characters, char)
 		gm.broadcast(map[string]interface{}{
@@ -195,17 +200,47 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 		stats := domain.Stats{Nom: charName, Background: charClass}
 		switch charClass {
 		case "Magicien":
-			stats.Force = 8; stats.Constitution = 9; stats.Vitesse = 11; stats.Charisme = 12; stats.Instinct = 14; stats.Savoir = 16
+			stats.Force = 8
+			stats.Constitution = 9
+			stats.Vitesse = 11
+			stats.Charisme = 12
+			stats.Instinct = 14
+			stats.Savoir = 16
 		case "Voleur":
-			stats.Force = 10; stats.Constitution = 8; stats.Vitesse = 16; stats.Charisme = 10; stats.Instinct = 15; stats.Savoir = 11
+			stats.Force = 10
+			stats.Constitution = 8
+			stats.Vitesse = 16
+			stats.Charisme = 10
+			stats.Instinct = 15
+			stats.Savoir = 11
 		case "Clerc":
-			stats.Force = 12; stats.Constitution = 14; stats.Vitesse = 8; stats.Charisme = 15; stats.Instinct = 9; stats.Savoir = 12
+			stats.Force = 12
+			stats.Constitution = 14
+			stats.Vitesse = 8
+			stats.Charisme = 15
+			stats.Instinct = 9
+			stats.Savoir = 12
 		case "Barde":
-			stats.Force = 9; stats.Constitution = 10; stats.Vitesse = 13; stats.Charisme = 16; stats.Instinct = 12; stats.Savoir = 10
+			stats.Force = 9
+			stats.Constitution = 10
+			stats.Vitesse = 13
+			stats.Charisme = 16
+			stats.Instinct = 12
+			stats.Savoir = 10
 		case "Ranger":
-			stats.Force = 13; stats.Constitution = 11; stats.Vitesse = 14; stats.Charisme = 8; stats.Instinct = 15; stats.Savoir = 9
+			stats.Force = 13
+			stats.Constitution = 11
+			stats.Vitesse = 14
+			stats.Charisme = 8
+			stats.Instinct = 15
+			stats.Savoir = 9
 		default: // Guerrier
-			stats.Force = 15; stats.Constitution = 12; stats.Vitesse = 10; stats.Charisme = 10; stats.Instinct = 10; stats.Savoir = 10
+			stats.Force = 15
+			stats.Constitution = 12
+			stats.Vitesse = 10
+			stats.Charisme = 10
+			stats.Instinct = 10
+			stats.Savoir = 10
 		}
 
 		char := &domain.Character{
@@ -240,6 +275,14 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Arc Long", IsConsumable: false, BonusDégâts: 5, Prix: 100})
 		}
 		char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Potion de Soin", IsConsumable: true, Prix: 25})
+
+		for _, it := range char.Inventaire {
+			if !it.IsConsumable && it.BonusDégâts > 0 {
+				equipped := it
+				char.Equipement.Arme = &equipped
+				break
+			}
+		}
 
 		player.Characters = append(player.Characters, char)
 		gm.saveCharacterState(pseudo, char)
@@ -322,14 +365,25 @@ func (gm *GameManager) HandleAction(pseudo string, action Action) {
 	}
 
 	char := gm.getLatestCharacter(pseudo)
-	if char == nil { return }
+	if char == nil {
+		return
+	}
 
 	switch action.Type {
-	case "attack": gm.actionAttack(char, action.Cible)
-	case "move": gm.actionMove(char, action.Destination)
-	case "cast_spell": gm.actionCastSpell(char, action.Sort, action.Cible)
-	case "use_consumable": gm.actionConsume(char, action.ItemName)
-	case "loot": gm.actionLoot(char, action.LootName)
+	case "attack":
+		gm.actionAttack(char, action.Cible)
+	case "move":
+		gm.actionMove(char, action.Destination)
+	case "cast_spell":
+		gm.actionCastSpell(char, action.Sort, action.Cible)
+	case "use_consumable":
+		gm.actionConsume(char, action.ItemName)
+	case "loot":
+		gm.actionLoot(char, action.LootName)
+	case "equip_item":
+		gm.actionEquip(char, action.ItemName)
+	case "unequip_item":
+		gm.actionUnequip(char, action.Slot)
 	}
 
 	gm.saveCharacterState(pseudo, char)
@@ -339,22 +393,226 @@ func (gm *GameManager) HandleAction(pseudo string, action Action) {
 func (gm *GameManager) saveCharacterState(pseudo string, char *domain.Character) {
 	statsJson, _ := json.Marshal(char.Stats)
 	invJson, _ := json.Marshal(char.Inventaire)
-	gm.Repo.SaveCharacter(pseudo, char.Stats.Nom, char.Stats.Background, char.Lieu, int(char.CurrentPV), int(char.Stats.CalculateLifePoints()), string(invJson), string(statsJson))
+	equipJson, _ := json.Marshal(char.Equipement)
+	gm.Repo.SaveCharacter(pseudo, char.Stats.Nom, char.Stats.Background, char.Lieu, int(char.CurrentPV), int(char.Stats.CalculateLifePoints()), string(invJson), string(statsJson), string(equipJson))
+}
+
+func (gm *GameManager) getTargetCharacter(targetPseudo string) *domain.Character {
+	targetPlayer, ok := gm.World.Players[targetPseudo]
+	if !ok || len(targetPlayer.Characters) == 0 {
+		return nil
+	}
+	return targetPlayer.Characters[len(targetPlayer.Characters)-1]
+}
+
+var rollD20Fn = func() int {
+	return rand.Intn(20) + 1
+}
+
+var rollDiceFn = func(count, sides int) int {
+	total := 0
+	if count < 1 {
+		count = 1
+	}
+	if sides < 1 {
+		sides = 1
+	}
+	for i := 0; i < count; i++ {
+		total += rand.Intn(sides) + 1
+	}
+	return total
+}
+
+func normalizeName(s string) string {
+	replacer := strings.NewReplacer(
+		"é", "e", "è", "e", "ê", "e", "ë", "e",
+		"à", "a", "â", "a", "ä", "a",
+		"ç", "c",
+		"î", "i", "ï", "i",
+		"ô", "o", "ö", "o",
+		"ù", "u", "û", "u", "ü", "u",
+		"É", "e", "È", "e", "Ê", "e", "À", "a", "Â", "a", "Ç", "c", "Î", "i", "Ï", "i", "Ô", "o", "Û", "u",
+	)
+	return strings.ToLower(replacer.Replace(s))
+}
+
+// weaponInfo returns the weapon damage dice (number of sides) and whether it is ranged (uses Vitesse).
+func weaponInfo(w *domain.Item) (sides int, ranged bool) {
+	if w == nil {
+		return 2, false // Mains nues (1d2)
+	}
+	switch {
+	case strings.Contains(normalizeName(w.Nom), "dague"):
+		return 4, false
+	case strings.Contains(normalizeName(w.Nom), "arbalete") || strings.Contains(normalizeName(w.Nom), "carquois"):
+		return 8, true
+	case strings.Contains(normalizeName(w.Nom), "arc"):
+		return 8, true
+	case strings.Contains(normalizeName(w.Nom), "epee"):
+		return 6, false
+	default:
+		return 6, false
+	}
+}
+
+func signed(v float64) string {
+	return fmt.Sprintf("%+.0f", v)
+}
+
+func resolvePhysicalAttack(attacker, target *domain.Character) string {
+	weapon := attacker.Equipement.Arme
+	sides, ranged := weaponInfo(weapon)
+
+	var magicBonus float64
+	weaponName := "Mains nues"
+	if weapon != nil {
+		magicBonus = weapon.BonusDégâts
+		weaponName = weapon.Nom
+	}
+
+	attackStat := attacker.Stats.Force
+	if ranged {
+		attackStat = attacker.Stats.Vitesse
+	}
+	attackMod := domain.AbilityModifier(attackStat)
+	dmgMod := domain.AbilityModifier(attackStat)
+
+	armorBonus := 0.0
+	if target.Equipement.Armure != nil {
+		armorBonus = target.Equipement.Armure.BonusArmure
+	}
+	ac := target.Stats.BaseAC() + armorBonus
+
+	roll := rollD20Fn()
+	if roll == 1 {
+		return fmt.Sprintf("💨 %s attaque %s avec %s ! [1d20 = 1] ❌ Raté (fumble) !", attacker.Stats.Nom, target.Stats.Nom, weaponName)
+	}
+
+	total := float64(roll) + attackMod + magicBonus
+	rollLabel := fmt.Sprintf("1d20%+s%+s = %.0f", signed(attackMod), signed(magicBonus), total)
+
+	if roll == 20 || total >= ac {
+		isCrit := roll == 20
+		dieCount := 1
+		dieDesc := fmt.Sprintf("1d%d", sides)
+		critMark := ""
+		if isCrit {
+			dieCount = 2
+			dieDesc = fmt.Sprintf("2d%d", sides)
+			critMark = " 💥 CRITIQUE !"
+		}
+		dmg := float64(rollDiceFn(dieCount, sides)) + dmgMod + magicBonus
+		if dmg < 1 {
+			dmg = 1
+		}
+		target.CurrentPV -= dmg
+		return fmt.Sprintf("🎯%s %s attaque %s avec %s ! Jet %s vs CA %.0f → Touché ! Dégâts : [%s%+s%+s = %.0f]. (PV : %.0f)",
+			critMark, attacker.Stats.Nom, target.Stats.Nom, weaponName, rollLabel, ac, dieDesc, signed(dmgMod), signed(magicBonus), dmg, target.CurrentPV)
+	}
+
+	return fmt.Sprintf("❌ %s attaque %s avec %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, target.Stats.Nom, weaponName, rollLabel, ac)
+}
+
+func resolveSpellAttack(attacker, target *domain.Character, spellName string) string {
+	spellMod := domain.AbilityModifier(attacker.Stats.Savoir)
+
+	armorBonus := 0.0
+	if target.Equipement.Armure != nil {
+		armorBonus = target.Equipement.Armure.BonusArmure
+	}
+	ac := target.Stats.BaseAC() + armorBonus
+
+	roll := rollD20Fn()
+	if roll == 1 {
+		return fmt.Sprintf("🕯️ %s lance %s sur %s ! [1d20 = 1] ❌ Raté !", attacker.Stats.Nom, spellName, target.Stats.Nom)
+	}
+
+	total := float64(roll) + spellMod
+	rollLabel := fmt.Sprintf("1d20%+s = %.0f", signed(spellMod), total)
+
+	if roll == 20 || total >= ac {
+		isCrit := roll == 20
+		critMark := ""
+		if isCrit {
+			critMark = " 💥 CRITIQUE !"
+		}
+		dmg := attacker.Stats.Savoir * 1.5
+		if isCrit {
+			dmg *= 2
+		}
+		target.CurrentPV -= dmg
+		return fmt.Sprintf("🔥%s %s lance %s sur %s ! Jet %s vs CA %.0f → Touché ! Dégâts magiques : %.0f. (PV : %.0f)",
+			critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dmg, target.CurrentPV)
+	}
+
+	return fmt.Sprintf("❌ %s lance %s sur %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac)
+}
+
+func (gm *GameManager) actionEquip(char *domain.Character, itemName string) {
+	for i := range char.Inventaire {
+		it := char.Inventaire[i]
+		if it.Nom != itemName {
+			continue
+		}
+		equipped := it
+		switch {
+		case it.BonusDégâts > 0:
+			char.Equipement.Arme = &equipped
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("🗡️ %s équipe %s !", char.Stats.Nom, it.Nom),
+			})
+		case it.BonusArmure > 0:
+			char.Equipement.Armure = &equipped
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("🛡️ %s équipe %s !", char.Stats.Nom, it.Nom),
+			})
+		default:
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("❌ %s ne peut pas équiper %s (ni arme ni armure)", char.Stats.Nom, it.Nom),
+			})
+		}
+		return
+	}
+	gm.broadcast(map[string]interface{}{
+		"type": "chat",
+		"msg":  fmt.Sprintf("❌ %s ne possède pas « %s »", char.Stats.Nom, itemName),
+	})
+}
+
+func (gm *GameManager) actionUnequip(char *domain.Character, slot string) {
+	switch slot {
+	case "weapon":
+		if char.Equipement.Arme != nil {
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("🔄 %s retire %s.", char.Stats.Nom, char.Equipement.Arme.Nom),
+			})
+			char.Equipement.Arme = nil
+		}
+	case "armor":
+		if char.Equipement.Armure != nil {
+			gm.broadcast(map[string]interface{}{
+				"type": "chat",
+				"msg":  fmt.Sprintf("🔄 %s retire %s.", char.Stats.Nom, char.Equipement.Armure.Nom),
+			})
+			char.Equipement.Armure = nil
+		}
+	}
 }
 
 func (gm *GameManager) actionAttack(attacker *domain.Character, targetPseudo string) {
-	targetPlayer, ok := gm.World.Players[targetPseudo]
-	if !ok || len(targetPlayer.Characters) == 0 { return }
-	target := targetPlayer.Characters[len(targetPlayer.Characters)-1]
-	if attacker.Lieu != target.Lieu { return }
+	target := gm.getTargetCharacter(targetPseudo)
+	if target == nil || attacker.Lieu != target.Lieu {
+		return
+	}
 
-	damage := attacker.Stats.CalculateDamage() - target.Stats.CalculateArmor()
-	if damage < 1 { damage = 1 }
-	target.CurrentPV -= damage
-
+	msg := resolvePhysicalAttack(attacker, target)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
-		"msg":  fmt.Sprintf("💥 %s attaque %s ! Dégâts : %.0f. (PV : %.0f)", attacker.Stats.Nom, target.Stats.Nom, damage, target.CurrentPV),
+		"msg":  msg,
 	})
 	gm.checkDeath(target)
 }
@@ -376,8 +634,12 @@ func (gm *GameManager) spawnLoot(locationName string) {
 			break
 		}
 	}
-	if loc == nil { return }
-	if len(loc.Objects) >= 5 { return }
+	if loc == nil {
+		return
+	}
+	if len(loc.Objects) >= 5 {
+		return
+	}
 
 	numSpawns := rand.Intn(3) // 0, 1, or 2 items
 	for i := 0; i < numSpawns && len(loc.Objects) < 5; i++ {
@@ -391,14 +653,15 @@ func (gm *GameManager) spawnLoot(locationName string) {
 }
 
 func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string, targetPseudo string) {
-	targetPlayer, ok := gm.World.Players[targetPseudo]
-	if !ok || len(targetPlayer.Characters) == 0 { return }
-	target := targetPlayer.Characters[len(targetPlayer.Characters)-1]
-	damage := char.Stats.Savoir * 1.5
-	target.CurrentPV -= damage
+	target := gm.getTargetCharacter(targetPseudo)
+	if target == nil || char.Lieu != target.Lieu {
+		return
+	}
+
+	msg := resolveSpellAttack(char, target, spellName)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
-		"msg":  fmt.Sprintf("🔥 %s lance %s sur %s ! Dégâts Magiques : %.0f.", char.Stats.Nom, spellName, target.Stats.Nom, damage),
+		"msg":  msg,
 	})
 	gm.checkDeath(target)
 }
@@ -411,7 +674,9 @@ func (gm *GameManager) actionConsume(char *domain.Character, itemName string) {
 			break
 		}
 	}
-	if itemIdx == -1 { return }
+	if itemIdx == -1 {
+		return
+	}
 	item := char.Inventaire[itemIdx]
 	if item.IsConsumable {
 		heal := char.Stats.Constitution * 5
@@ -440,7 +705,9 @@ func (gm *GameManager) checkDeath(char *domain.Character) {
 
 func (gm *GameManager) getLatestCharacter(pseudo string) *domain.Character {
 	player, ok := gm.World.Players[pseudo]
-	if !ok || len(player.Characters) == 0 { return nil }
+	if !ok || len(player.Characters) == 0 {
+		return nil
+	}
 	return player.Characters[len(player.Characters)-1]
 }
 
@@ -452,7 +719,9 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 			break
 		}
 	}
-	if currentLocation == nil || itemName == "" { return }
+	if currentLocation == nil || itemName == "" {
+		return
+	}
 	itemIdx := -1
 	for i, obj := range currentLocation.Objects {
 		if obj.Nom == itemName {
@@ -460,7 +729,9 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 			break
 		}
 	}
-	if itemIdx == -1 { return }
+	if itemIdx == -1 {
+		return
+	}
 	item := currentLocation.Objects[itemIdx]
 	char.Inventaire = append(char.Inventaire, item)
 	currentLocation.Objects = append(currentLocation.Objects[:itemIdx], currentLocation.Objects[itemIdx+1:]...)
@@ -474,20 +745,26 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 
 func (gm *GameManager) getCharacterByPseudo(targetPseudo string) *domain.Character {
 	player, ok := gm.World.Players[targetPseudo]
-	if !ok || len(player.Characters) == 0 { return nil }
+	if !ok || len(player.Characters) == 0 {
+		return nil
+	}
 	return player.Characters[len(player.Characters)-1]
 }
 
 func (gm *GameManager) dmEditStats(targetPseudo string, stats domain.Stats) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil { return }
+	if char == nil {
+		return
+	}
 	char.Stats.Force = stats.Force
 	char.Stats.Constitution = stats.Constitution
 	char.Stats.Vitesse = stats.Vitesse
 	char.Stats.Charisme = stats.Charisme
 	char.Stats.Savoir = stats.Savoir
 	char.Stats.Instinct = stats.Instinct
-	if stats.Nom != "" { char.Stats.Nom = stats.Nom }
+	if stats.Nom != "" {
+		char.Stats.Nom = stats.Nom
+	}
 	gm.saveCharacterState(targetPseudo, char)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
@@ -498,7 +775,9 @@ func (gm *GameManager) dmEditStats(targetPseudo string, stats domain.Stats) {
 
 func (gm *GameManager) dmSetPV(targetPseudo string, pv float64) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil { return }
+	if char == nil {
+		return
+	}
 	char.CurrentPV = pv
 	gm.saveCharacterState(targetPseudo, char)
 	gm.broadcast(map[string]interface{}{
@@ -510,7 +789,9 @@ func (gm *GameManager) dmSetPV(targetPseudo string, pv float64) {
 
 func (gm *GameManager) dmAddItem(targetPseudo string, item domain.Item) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil { return }
+	if char == nil {
+		return
+	}
 	char.Inventaire = append(char.Inventaire, item)
 	gm.saveCharacterState(targetPseudo, char)
 	gm.broadcast(map[string]interface{}{
@@ -522,7 +803,9 @@ func (gm *GameManager) dmAddItem(targetPseudo string, item domain.Item) {
 
 func (gm *GameManager) dmRemoveItem(targetPseudo string, index int) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil || index < 0 || index >= len(char.Inventaire) { return }
+	if char == nil || index < 0 || index >= len(char.Inventaire) {
+		return
+	}
 	removed := char.Inventaire[index]
 	char.Inventaire = append(char.Inventaire[:index], char.Inventaire[index+1:]...)
 	gm.saveCharacterState(targetPseudo, char)
@@ -535,7 +818,9 @@ func (gm *GameManager) dmRemoveItem(targetPseudo string, index int) {
 
 func (gm *GameManager) dmAddSpell(targetPseudo string, spell domain.Sort) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil { return }
+	if char == nil {
+		return
+	}
 	char.Sorts = append(char.Sorts, spell)
 	gm.saveCharacterState(targetPseudo, char)
 	gm.broadcast(map[string]interface{}{
@@ -547,7 +832,9 @@ func (gm *GameManager) dmAddSpell(targetPseudo string, spell domain.Sort) {
 
 func (gm *GameManager) dmRemoveSpell(targetPseudo string, index int) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil || index < 0 || index >= len(char.Sorts) { return }
+	if char == nil || index < 0 || index >= len(char.Sorts) {
+		return
+	}
 	removed := char.Sorts[index]
 	char.Sorts = append(char.Sorts[:index], char.Sorts[index+1:]...)
 	gm.saveCharacterState(targetPseudo, char)
@@ -560,7 +847,9 @@ func (gm *GameManager) dmRemoveSpell(targetPseudo string, index int) {
 
 func (gm *GameManager) dmMovePlayer(targetPseudo string, destination string) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil { return }
+	if char == nil {
+		return
+	}
 	char.Lieu = destination
 	gm.saveCharacterState(targetPseudo, char)
 	gm.broadcast(map[string]interface{}{
@@ -588,7 +877,9 @@ func (gm *GameManager) dmRemoveLocationItem(locationName string, index int) {
 	for i := range gm.World.Locations {
 		if gm.World.Locations[i].Nom == locationName {
 			loc := &gm.World.Locations[i]
-			if index < 0 || index >= len(loc.Objects) { return }
+			if index < 0 || index >= len(loc.Objects) {
+				return
+			}
 			removed := loc.Objects[index]
 			loc.Objects = append(loc.Objects[:index], loc.Objects[index+1:]...)
 			gm.broadcast(map[string]interface{}{
@@ -604,7 +895,9 @@ func (gm *GameManager) dmRemoveLocationItem(locationName string, index int) {
 func (gm *GameManager) dmDeletePlayer(targetPseudo string) {
 	char := gm.getCharacterByPseudo(targetPseudo)
 	name := targetPseudo
-	if char != nil { name = char.Stats.Nom }
+	if char != nil {
+		name = char.Stats.Nom
+	}
 	delete(gm.World.Players, targetPseudo)
 	delete(gm.Connections, targetPseudo)
 	delete(gm.DMs, targetPseudo)
@@ -618,7 +911,9 @@ func (gm *GameManager) dmDeletePlayer(targetPseudo string) {
 
 func (gm *GameManager) dmEditAlign(targetPseudo string, align string) {
 	char := gm.getCharacterByPseudo(targetPseudo)
-	if char == nil { return }
+	if char == nil {
+		return
+	}
 	char.Alignement = align
 	gm.saveCharacterState(targetPseudo, char)
 	gm.broadcast(map[string]interface{}{
@@ -664,7 +959,9 @@ func (gm *GameManager) dmEditLocation(oldName, newName, newBg string) {
 // --- NPC Actions ---
 
 func (gm *GameManager) dmAddNPC(name, location string, pv float64, align string) {
-	if name == "" { return }
+	if name == "" {
+		return
+	}
 	// Check existing
 	if _, exists := gm.World.NPCs[name]; exists {
 		gm.broadcast(map[string]interface{}{
@@ -678,8 +975,12 @@ func (gm *GameManager) dmAddNPC(name, location string, pv float64, align string)
 		Background: "PNJ",
 		Force:      10, Constitution: 10, Vitesse: 10, Charisme: 10, Savoir: 10, Instinct: 10,
 	}
-	if pv <= 0 { pv = stats.CalculateLifePoints() }
-	if align == "" { align = "Neutre" }
+	if pv <= 0 {
+		pv = stats.CalculateLifePoints()
+	}
+	if align == "" {
+		align = "Neutre"
+	}
 	npc := &domain.Character{
 		ID:         uuid.New(),
 		Alignement: align,
@@ -699,7 +1000,9 @@ func (gm *GameManager) dmAddNPC(name, location string, pv float64, align string)
 
 func (gm *GameManager) dmRemoveNPC(name string) {
 	npc, ok := gm.World.NPCs[name]
-	if !ok { return }
+	if !ok {
+		return
+	}
 	delete(gm.World.NPCs, name)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
@@ -710,9 +1013,15 @@ func (gm *GameManager) dmRemoveNPC(name string) {
 
 func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, align string, overwrite bool) {
 	npc, ok := gm.World.NPCs[name]
-	if !ok { return }
-	if stats.Nom != "" { npc.Stats.Nom = stats.Nom }
-	if stats.Background != "" { npc.Stats.Background = stats.Background }
+	if !ok {
+		return
+	}
+	if stats.Nom != "" {
+		npc.Stats.Nom = stats.Nom
+	}
+	if stats.Background != "" {
+		npc.Stats.Background = stats.Background
+	}
 	if overwrite {
 		npc.Stats.Force = stats.Force
 		npc.Stats.Constitution = stats.Constitution
@@ -722,15 +1031,31 @@ func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, al
 		npc.Stats.Instinct = stats.Instinct
 		npc.CurrentPV = pv
 	} else {
-		if stats.Force != 0 { npc.Stats.Force = stats.Force }
-		if stats.Constitution != 0 { npc.Stats.Constitution = stats.Constitution }
-		if stats.Vitesse != 0 { npc.Stats.Vitesse = stats.Vitesse }
-		if stats.Charisme != 0 { npc.Stats.Charisme = stats.Charisme }
-		if stats.Savoir != 0 { npc.Stats.Savoir = stats.Savoir }
-		if stats.Instinct != 0 { npc.Stats.Instinct = stats.Instinct }
-		if pv > 0 { npc.CurrentPV = pv }
+		if stats.Force != 0 {
+			npc.Stats.Force = stats.Force
+		}
+		if stats.Constitution != 0 {
+			npc.Stats.Constitution = stats.Constitution
+		}
+		if stats.Vitesse != 0 {
+			npc.Stats.Vitesse = stats.Vitesse
+		}
+		if stats.Charisme != 0 {
+			npc.Stats.Charisme = stats.Charisme
+		}
+		if stats.Savoir != 0 {
+			npc.Stats.Savoir = stats.Savoir
+		}
+		if stats.Instinct != 0 {
+			npc.Stats.Instinct = stats.Instinct
+		}
+		if pv > 0 {
+			npc.CurrentPV = pv
+		}
 	}
-	if align != "" { npc.Alignement = align }
+	if align != "" {
+		npc.Alignement = align
+	}
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
 		"msg":  fmt.Sprintf("📜 Le MDJ a modifié le PNJ \"%s\".", npc.Stats.Nom),
@@ -740,7 +1065,9 @@ func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, al
 
 func (gm *GameManager) dmMoveNPC(name, destination string) {
 	npc, ok := gm.World.NPCs[name]
-	if !ok { return }
+	if !ok {
+		return
+	}
 	npc.Lieu = destination
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
@@ -751,7 +1078,9 @@ func (gm *GameManager) dmMoveNPC(name, destination string) {
 
 func (gm *GameManager) dmNPCAddItem(name string, item domain.Item) {
 	npc, ok := gm.World.NPCs[name]
-	if !ok { return }
+	if !ok {
+		return
+	}
 	npc.Inventaire = append(npc.Inventaire, item)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
@@ -762,7 +1091,9 @@ func (gm *GameManager) dmNPCAddItem(name string, item domain.Item) {
 
 func (gm *GameManager) dmNPCRemoveItem(name string, index int) {
 	npc, ok := gm.World.NPCs[name]
-	if !ok || index < 0 || index >= len(npc.Inventaire) { return }
+	if !ok || index < 0 || index >= len(npc.Inventaire) {
+		return
+	}
 	removed := npc.Inventaire[index]
 	npc.Inventaire = append(npc.Inventaire[:index], npc.Inventaire[index+1:]...)
 	gm.broadcast(map[string]interface{}{
@@ -774,7 +1105,9 @@ func (gm *GameManager) dmNPCRemoveItem(name string, index int) {
 
 func (gm *GameManager) dmNPCAddSpell(name string, spell domain.Sort) {
 	npc, ok := gm.World.NPCs[name]
-	if !ok { return }
+	if !ok {
+		return
+	}
 	npc.Sorts = append(npc.Sorts, spell)
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",
@@ -785,7 +1118,9 @@ func (gm *GameManager) dmNPCAddSpell(name string, spell domain.Sort) {
 
 func (gm *GameManager) dmNPCRemoveSpell(name string, index int) {
 	npc, ok := gm.World.NPCs[name]
-	if !ok || index < 0 || index >= len(npc.Sorts) { return }
+	if !ok || index < 0 || index >= len(npc.Sorts) {
+		return
+	}
 	removed := npc.Sorts[index]
 	npc.Sorts = append(npc.Sorts[:index], npc.Sorts[index+1:]...)
 	gm.broadcast(map[string]interface{}{
@@ -816,6 +1151,7 @@ func (gm *GameManager) NotifyChange() {
 				"alignement": char.Alignement,
 				"sorts":      char.Sorts,
 				"inventaire": char.Inventaire,
+				"equipement": char.Equipement,
 				"stats":      char.Stats,
 				"role":       gm.DMs[pseudo],
 			}
@@ -832,6 +1168,7 @@ func (gm *GameManager) NotifyChange() {
 			"alignement": npc.Alignement,
 			"sorts":      npc.Sorts,
 			"inventaire": npc.Inventaire,
+			"equipement": npc.Equipement,
 			"stats":      npc.Stats,
 			"is_npc":     true,
 		}

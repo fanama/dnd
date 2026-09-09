@@ -28,6 +28,11 @@ export interface Sort {
     duree: string;
 }
 
+export interface Equipment {
+    arme: Item | null;
+    armure: Item | null;
+}
+
 export interface PlayerData {
     nom: string;
     lieu: string;
@@ -38,6 +43,7 @@ export interface PlayerData {
     stats: Stats;
     inventaire: Item[];
     sorts: Sort[];
+    equipement: Equipment;
     role: boolean;
     is_npc?: boolean;
 }

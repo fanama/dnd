@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"math"
+
 	"github.com/google/uuid"
 )
 
@@ -11,7 +13,7 @@ type Stats struct {
 	Constitution float64 `json:"constitution"`
 	Vitesse      float64 `json:"vitesse"`
 	Charisme     float64 `json:"charisme"`
-	Savoir      float64 `json:"savoir"`
+	Savoir       float64 `json:"savoir"`
 	Instinct     float64 `json:"instinct"`
 }
 
@@ -19,20 +21,20 @@ func (s *Stats) CalculateLifePoints() float64 {
 	return s.Constitution * 10.0
 }
 
-func (s *Stats) CalculateArmor() float64 {
-	return s.Vitesse * 1.5
+func AbilityModifier(stat float64) float64 {
+	return math.Floor((stat - 10.0) / 2.0)
 }
 
-func (s *Stats) CalculateDamage() float64 {
-	return s.Force * 2.0
+func (s *Stats) BaseAC() float64 {
+	return 10.0 + AbilityModifier(s.Vitesse)
 }
 
 type Sort struct {
-	Nom         string  `json:"nom"`
-	NiveauSort  float64 `json:"niveauSort"`
-	EcoleMagie  string  `json:"ecoleMagie"`
-	Portee      string  `json:"portee"`
-	Duree       string  `json:"duree"`
+	Nom        string  `json:"nom"`
+	NiveauSort float64 `json:"niveauSort"`
+	EcoleMagie string  `json:"ecoleMagie"`
+	Portee     string  `json:"portee"`
+	Duree      string  `json:"duree"`
 }
 
 type Item struct {
@@ -44,18 +46,24 @@ type Item struct {
 	BonusArmure  float64 `json:"bonusArmure"`
 }
 
+type Equipment struct {
+	Arme   *Item `json:"arme,omitempty"`
+	Armure *Item `json:"armure,omitempty"`
+}
+
 type Character struct {
-	ID           uuid.UUID `json:"id"`
-	Alignement   string    `json:"alignement"`
-	Stats        Stats     `json:"stats"`
-	CurrentPV    float64   `json:"pv"`
-	Inventaire   []Item    `json:"inventaire"`
-	Sorts        []Sort    `json:"sorts"`
-	Lieu         string    `json:"lieu"`
+	ID         uuid.UUID `json:"id"`
+	Alignement string    `json:"alignement"`
+	Stats      Stats     `json:"stats"`
+	CurrentPV  float64   `json:"pv"`
+	Inventaire []Item    `json:"inventaire"`
+	Sorts      []Sort    `json:"sorts"`
+	Equipement Equipment `json:"equipement"`
+	Lieu       string    `json:"lieu"`
 }
 
 type Player struct {
-	Pseudo     string     `json:"pseudo"`
+	Pseudo     string       `json:"pseudo"`
 	Characters []*Character `json:"characters"`
 }
 
@@ -70,8 +78,8 @@ type Location struct {
 }
 
 type World struct {
-	ID        uuid.UUID            `json:"id"`
-	Players   map[string]*Player   `json:"players"`
+	ID        uuid.UUID             `json:"id"`
+	Players   map[string]*Player    `json:"players"`
 	NPCs      map[string]*Character `json:"npcs"`
-	Locations []Location           `json:"locations"`
+	Locations []Location            `json:"locations"`
 }

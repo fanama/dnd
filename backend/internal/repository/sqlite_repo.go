@@ -36,21 +36,38 @@ func createTables(db *sql.DB) error {
 		max_pv INTEGER,
 		lieu TEXT,
 		inventaire TEXT,
-		stats TEXT
+		stats TEXT,
+		equipement TEXT
 	);`
-	_, err := db.Exec(query)
+	if _, err := db.Exec(query); err != nil {
+		return err
+	}
+	return ensureColumn(db, "characters", "equipement")
+}
+
+func ensureColumn(db *sql.DB, table, column string) error {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('` + table + `') WHERE name = ?`, column)
+	if err != nil {
+		return err
+	}
+	exists := rows.Next()
+	rows.Close()
+	if exists {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` TEXT`)
 	return err
 }
 
-func (r *SQLiteRepository) SaveCharacter(pseudo, nom, classe, lieu string, pv, maxPv int, inventaire string, stats string) error {
-	query := `INSERT OR REPLACE INTO characters (pseudo, nom, classe, pv, max_pv, lieu, inventaire, stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := r.db.Exec(query, pseudo, nom, classe, lieu, pv, maxPv, inventaire, stats)
+func (r *SQLiteRepository) SaveCharacter(pseudo, nom, classe, lieu string, pv, maxPv int, inventaire, stats, equipement string) error {
+	query := `INSERT OR REPLACE INTO characters (pseudo, nom, classe, pv, max_pv, lieu, inventaire, stats, equipement) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	_, err := r.db.Exec(query, pseudo, nom, classe, lieu, pv, maxPv, inventaire, stats, equipement)
 	return err
 }
 
-func (r *SQLiteRepository) GetCharacter(pseudo string) (nom, classe, lieu string, pv, maxPv int, inventaire, stats string, err error) {
-	query := `SELECT nom, classe, lieu, pv, max_pv, inventaire, stats FROM characters WHERE pseudo = ?`
-	err = r.db.QueryRow(query, pseudo).Scan(&nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats)
+func (r *SQLiteRepository) GetCharacter(pseudo string) (nom, classe, lieu string, pv, maxPv int, inventaire, stats, equipement string, err error) {
+	query := `SELECT nom, classe, lieu, pv, max_pv, inventaire, stats, equipement FROM characters WHERE pseudo = ?`
+	err = r.db.QueryRow(query, pseudo).Scan(&nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats, &equipement)
 	return
 }
 
@@ -60,23 +77,32 @@ func (r *SQLiteRepository) DeleteCharacter(pseudo string) error {
 	return err
 }
 
-func (r *SQLiteRepository) GetAllCharacters() (map[string]struct{ Nom, Classe, Lieu, Inventaire, Stats string; PV, MaxPV int }, error) {
-	query := `SELECT pseudo, nom, classe, lieu, pv, max_pv, inventaire, stats FROM characters`
+func (r *SQLiteRepository) GetAllCharacters() (map[string]struct {
+	Nom, Classe, Lieu, Inventaire, Stats, Equipement string
+	PV, MaxPV                                        int
+}, error) {
+	query := `SELECT pseudo, nom, classe, lieu, pv, max_pv, inventaire, stats, equipement FROM characters`
 	rows, err := r.db.Query(query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make(map[string]struct{ Nom, Classe, Lieu, Inventaire, Stats string; PV, MaxPV int })
+	result := make(map[string]struct {
+		Nom, Classe, Lieu, Inventaire, Stats, Equipement string
+		PV, MaxPV                                        int
+	})
 	for rows.Next() {
-		var pseudo, nom, classe, lieu, inventaire, stats string
+		var pseudo, nom, classe, lieu, inventaire, stats, equipement string
 		var pv, maxPv int
-		if err := rows.Scan(&pseudo, &nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats); err != nil {
+		if err := rows.Scan(&pseudo, &nom, &classe, &lieu, &pv, &maxPv, &inventaire, &stats, &equipement); err != nil {
 			continue
 		}
-		result[pseudo] = struct{ Nom, Classe, Lieu, Inventaire, Stats string; PV, MaxPV int }{
-			Nom: nom, Classe: classe, Lieu: lieu, Inventaire: inventaire, Stats: stats, PV: pv, MaxPV: maxPv,
+		result[pseudo] = struct {
+			Nom, Classe, Lieu, Inventaire, Stats, Equipement string
+			PV, MaxPV                                        int
+		}{
+			Nom: nom, Classe: classe, Lieu: lieu, Inventaire: inventaire, Stats: stats, Equipement: equipement, PV: pv, MaxPV: maxPv,
 		}
 	}
 	return result, nil

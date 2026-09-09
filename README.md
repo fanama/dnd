@@ -170,9 +170,14 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 ## Game Engine Rules
 
 * **Max HP**: Constitution x 10.0
-* **Physical Damage**: Force x 2.0
-* **Armor**: Vitesse x 1.5
-* **Combat**: Damage = Attacker Damage - Target Armor (minimum 1.0)
+* **Modifier**: floor((stat - 10) / 2) — e.g. stat 10 → +0, 12 → +1, 18 → +4
+* **AC (Classe d'Armure)**: 10 + mod(Vitesse) + BonusArmure (armure équipée)
+* **Jet d'attaque (arme)**: 1d20 + mod(Force) [mêlée] ou mod(Vitesse) [à distance] + BonusDégâts (bonus magique de l'arme) ≥ CA
+* **Jet d'attaque (sort)**: 1d20 + mod(Savoir) ≥ CA
+* **Résultats critiques**: 20 naturel = coup critique (toujours touche, dés dédoublés — `2dX` physiques, Savoir x 3 pour les sorts) ; 1 naturel = raté (fumble)
+* **Dégâts physiques**: dé d'arme + mod (min 1) — mains nues `1d2`, Dague `1d4`, Épée `1d6`, Arc / Arbalète `1d8`, autre arme `1d6`
+* **Combat**: touche si 20 naturel ou jet ≥ CA
+* **Équipement**: actions `equip_item` / `unequip_item` (slots `weapon`/`armor`) gérées par le serveur et persistées en base ; le personnage démarre avec son arme de classe équipée
 * **Persistence**: Characters are saved to SQLite after every action
 * **Death**: Falling to 0 HP resurrects at the Taverne at full HP
 * **NPCs**: Managed by the DM only; NPCs are broadcast to players who see them at their current location
@@ -202,142 +207,91 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 ## Domain Model
 
 ```mermaid
-
 classDiagram
-    class Controller {
-        <<Entity>>
-        +string pseudo
-        +List~Personnage~ personnages
-    }
-    class Joueur {
-        <<Entity>>
-        keyboardInput() String
-    }
-    
-    class IA {
-        <<Entity>>
-        generateText() String
-        selectAction()
-    }
     class World {
-        <<Entity>>
-        +uuid id
-        Liste~Joueur~ joueurs
+        +uuid ID
+        +map~string, Player~ Players
+        +map~string, Character~ NPCs
+        +List~Location~ Locations
     }
-    class Caractéristiques {
-        <<Entity>>
-        +String nom
-        +String background
-        -Number force
-        -Number constitution
-        -Number vitesse
-        -Number charisme
-        -Number Instinct
-        -Number Savoir
-        +CalculateLifePoints() Number
-        +CalculateArmor() Number
-        +CalculateDamage() Number
-        +getMod(param:String) Number
+    class Player {
+        +string Pseudo
+        +List~Character~ Characters
     }
-    class Personnage {
-        <<Entity>>
-        +String alignement
-        +Number currentPV
-        +List~Object~ inventaire
-        +List~Quete~ quêtes
-        +speak(text:String)
-        +attack(ennemy: Personnage)
-        +takeDamage(damage: Number)
-        +equip(object: Object)
-        +buy(object:Object)
-        +sell(object:Object)
+    class Character {
+        +uuid ID
+        +string Alignement
+        +Stats Stats
+        +float CurrentPV
+        +List~Item~ Inventaire
+        +List~Sort~ Sorts
+        +Equipement Equipement
+        +string Lieu
     }
-    class Ennemy {
-        <<Entity>>
-        +List~Object~ inventaire
-        +Number Experience
+    class Stats {
+        +string Nom
+        +string Background
+        +float Force
+        +float Constitution
+        +float Vitesse
+        +float Charisme
+        +float Savoir
+        +float Instinct
+        +CalculateLifePoints() float
+        +BaseAC() float
     }
-    class Lieu {
-        <<Entity>>
-        +Position position
-        +Caractéristiques stats
-        +List~Personnage~ personnages
-        +List~Object~ objects
-    }
-    class Quete {
-        <<Entity>>
-        +uuid id
-        +String titre
-        +String description
-        +String statut
-        +Number xpRecompense
-        +verifierObjectifs() Boolean
-    }
-    class Objet {
-        <<Entity>>
-        +Number prix
-        +Number encombrement
-        +Caractéristiques stats
+    class AbilityModifier {
+        +AbilityModifier(stat float) float
     }
     class Equipement {
-        <<Entity>>
-        +String emplacement
-        +Number portée
+        +Item Arme
+        +Item Armure
     }
-    class Consommable {
-        <<Entity>>
-        +Number Durée
-    }
-    class Vetement {
-        <<Entity>>
-        +uuid id
-    }
-    class Arme {
-        <<Entity>>
-        +uuid id
-    }
-    class Classe {
-        <<Entity>>
-        +Number niveau
-        +Caractéristiques stats
-        +Liste~Sort~ sorts
-        +Liste~Competences~ compétences
-        +levelUp()
-    }
-    class Race {
-        <<Entity>>
-        +String nomRace
-        +Caractéristiques stats
-        +Liste~Sort~ sorts
-        +Liste~Competences~ compétences
-    }
-    class Competence {
-        <<Entity>>
-        +String nom
-        +String stat
-        +String description
-        +Number maitrise
+    class Item {
+        +string Nom
+        +float Prix
+        +float Encombrement
+        +bool IsConsumable
+        +float BonusDégâts
+        +float BonusArmure
     }
     class Sort {
-        <<Entity>>
-        +String nom
-        +Number niveauSort
-        +String ecoleMagie
-        +String portee
-        +String duree
-        +lancerSort(cible: Personnage)
+        +string Nom
+        +float NiveauSort
+        +string EcoleMagie
+        +string Portee
+        +string Duree
     }
-    Controller <|-- IA
-    Controller <|-- Joueur
-    Equipement --|> Objet
-    Consommable --|> Objet
-    Vetement --|> Equipement
-    Arme --|> Equipement
-    Personnage "1"o--"1" Classe
-    Personnage "1"*--"1" Race
-    Personnage <|-- Ennemy
-    World "1"o-->"*" Lieu
-    Lieu "1"o-->"*" Quete
-
-
+    class Location {
+        +string Nom
+        +string Background
+        +List~Item~ Objects
+        +Position Position
+    }
+    class GameManager {
+        +Connections map~string, WS~
+        +World World
+        +Repo
+        +DMs map~string, bool
+        +HandleAction(pseudo, action)
+        +actionAttack(attacker, target)
+        +actionCastSpell(char, sort, cible)
+        +actionEquip(char, item)
+        +actionUnequip(char, slot)
+        +resolvePhysicalAttack(attacker, target) string
+        +resolveSpellAttack(attacker, target, sort) string
+        +NotifyChange()
+    }
+    World "1" o-- "*" Player
+    World "1" o-- "*" Location
+    World "1" o-- "*" Character : NPCs
+    Player "1" o-- "*" Character
+    Character "1" *-- "1" Stats
+    Character "1" *-- "1" Equipement
+    Character "1" *-- "*" Item : inventaire
+    Character "1" *-- "*" Sort : sorts
+    Character "1" o-- "1" Location : lieu
+    Equipement "1" o-- "0..1" Item : arme
+    Equipement "1" o-- "0..1" Item : armure
+    GameManager "1" *-- "1" World
 ```

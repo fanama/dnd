@@ -31,6 +31,14 @@
     function lootItem(name) {
         sendAction({ type: 'loot', loot_name: name });
     }
+
+    function equipItem(name) {
+        sendAction({ type: 'equip_item', item_name: name });
+    }
+
+    function unequipItem(slot) {
+        sendAction({ type: 'unequip_item', slot: slot });
+    }
 </script>
 
 <svelte:head>
@@ -70,6 +78,8 @@
                 onHit={hit}
                 onUseItem={useItem}
                 onLootItem={lootItem}
+                onEquip={equipItem}
+                onUnequip={unequipItem}
             />
         </div>
     {/if}

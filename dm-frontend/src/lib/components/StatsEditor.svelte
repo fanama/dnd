@@ -3,6 +3,7 @@
     export let pv = 0;
     export let maxPv = 0;
     export let isNpc = false;
+    export let equipement = { arme: null, armure: null };
     export let onSave = (stats) => {};
     export let onSetPv = (pv) => {};
 
@@ -26,9 +27,34 @@
         }
     }
 
+    function mod(stat) {
+        return Math.floor(((Number(stat) || 10) - 10) / 2);
+    }
+
+    function normalizeName(name) {
+        return (name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function weaponSides(item) {
+        if (!item) return 2;
+        const n = normalizeName(item.nom);
+        if (n.includes('dague')) return 4;
+        if (n.includes('arc') || n.includes('arbalete') || n.includes('carquois')) return 8;
+        if (n.includes('epee')) return 6;
+        return 6;
+    }
+
+    function weaponRanged(item) {
+        if (!item) return false;
+        const n = normalizeName(item.nom);
+        return n.includes('arc') || n.includes('arbalete') || n.includes('carquois');
+    }
+
     $: derivedMaxPv = Math.floor((Number(editStats.constitution) || 10) * 10);
-    $: derivedArmor = Math.floor((Number(editStats.vitesse) || 10) * 1.5);
-    $: derivedDamage = Math.floor((Number(editStats.force) || 10) * 2);
+    $: derivedAC = 10 + mod(editStats.vitesse) + (equipement?.armure?.bonusArmure || 0);
+    $: attackStat = weaponRanged(equipement?.arme) ? editStats.vitesse : editStats.force;
+    $: derivedAttack = mod(attackStat) + (equipement?.arme?.bonusDegats || 0);
+    $: damageDice = `${weaponSides(equipement?.arme) ? `1d${weaponSides(equipement?.arme)}` : '1d2'}${derivedAttack >= 0 ? `+${mod(attackStat)}` : mod(attackStat)}`;
 
     const statFields = [
         { key: 'force', label: 'Force', icon: '💪' },
@@ -93,12 +119,17 @@
     <div class="derived-grid">
         <div class="derived-card">
             <span class="derived-icon">🛡️</span>
-            <span class="derived-value">{derivedArmor}</span>
-            <span class="derived-label">Armure</span>
+            <span class="derived-value">{derivedAC}</span>
+            <span class="derived-label">CA</span>
+        </div>
+        <div class="derived-card">
+            <span class="derived-icon">🎯</span>
+            <span class="derived-value">{derivedAttack >= 0 ? `+${derivedAttack}` : derivedAttack}</span>
+            <span class="derived-label">Attaque</span>
         </div>
         <div class="derived-card">
             <span class="derived-icon">⚔️</span>
-            <span class="derived-value">{derivedDamage}</span>
+            <span class="derived-value">{damageDice}</span>
             <span class="derived-label">Dégâts</span>
         </div>
         <div class="derived-card">
@@ -216,7 +247,7 @@
     /* Derived stats preview */
     .derived-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 8px;
     }
 

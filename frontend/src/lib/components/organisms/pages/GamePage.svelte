@@ -11,12 +11,14 @@
     export let onHit = (target) => {};
     export let onUseItem = (name) => {};
     export let onLootItem = (name) => {};
+    export let onEquip = (name) => {};
+    export let onUnequip = (slot) => {};
 
     let activeTab = 'charsheet';
-    let equips = { weapon: null, armor: null };
 
     $: myStatsData = $myStats;
     $: myDerived = $myDerivedStats;
+    $: myEquips = myStatsData?.equipement || { arme: null, armure: null };
 
     $: sameZonePlayers = Object.entries(gameState.players).filter(
         ([p, v]) => v.lieu === gameState.location && p !== gameState.me
@@ -28,18 +30,19 @@
             onUseItem(item.nom);
             return;
         }
-        const slot = item.bonusDegats ? 'weapon' : item.bonusArmure ? 'armor' : null;
-        if (slot) {
-            equips[slot] = item;
-        }
+        onEquip(item.nom);
     }
 
     function unequipSlot(slot) {
-        equips[slot] = null;
+        onUnequip(slot);
     }
 
     function isEquipped(item) {
-        return equips.weapon === item || equips.armor === item;
+        return myEquips.arme?.nom === item.nom || myEquips.armure?.nom === item.nom;
+    }
+
+    function slotItem(slot) {
+        return slot === 'weapon' ? myEquips.arme : myEquips.armure;
     }
 </script>
 
@@ -155,32 +158,35 @@
                 </h3>
                 <div class="equip-slots">
                     {#each ['weapon', 'armor'] as slot}
-                        <div class="equip-slot" class:empty={!equips[slot]}>
-                            <div class="slot-header">
-                                <span class="slot-name">{slot === 'weapon' ? '⚔️ Arme' : '🛡️ Armure'}</span>
-                                {#if equips[slot]}
+                        {#if slotItem(slot)}
+                            <div class="equip-slot">
+                                <div class="slot-header">
+                                    <span class="slot-name">{slot === 'weapon' ? '⚔️ Arme' : '🛡️ Armure'}</span>
                                     <button class="slot-clear" on:click={() => unequipSlot(slot)} aria-label="Retirer">
                                         ✖ Retirer
                                     </button>
-                                {/if}
-                            </div>
-                            {#if equips[slot]}
+                                </div>
                                 <div class="slot-item">
                                     <span class="slot-item-icon">{slot === 'weapon' ? '⚔️' : '🛡️'}</span>
                                     <div class="slot-item-info">
-                                        <span class="slot-item-name">{equips[slot].nom}</span>
-                                        {#if equips[slot].bonusDegats}
-                                            <span class="slot-item-stat">+{equips[slot].bonusDegats} ATK</span>
+                                        <span class="slot-item-name">{slotItem(slot).nom}</span>
+                                        {#if slotItem(slot).bonusDegats}
+                                            <span class="slot-item-stat">+{slotItem(slot).bonusDegats} ATK</span>
                                         {/if}
-                                        {#if equips[slot].bonusArmure}
-                                            <span class="slot-item-stat">+{equips[slot].bonusArmure} DEF</span>
+                                        {#if slotItem(slot).bonusArmure}
+                                            <span class="slot-item-stat">+{slotItem(slot).bonusArmure} DEF</span>
                                         {/if}
                                     </div>
                                 </div>
-                            {:else}
+                            </div>
+                        {:else}
+                            <div class="equip-slot empty">
+                                <div class="slot-header">
+                                    <span class="slot-name">{slot === 'weapon' ? '⚔️ Arme' : '🛡️ Armure'}</span>
+                                </div>
                                 <div class="slot-empty">Aucune {slot === 'weapon' ? 'arme' : 'armure'} équipée</div>
-                            {/if}
-                        </div>
+                            </div>
+                        {/if}
                     {/each}
                 </div>
             </div>

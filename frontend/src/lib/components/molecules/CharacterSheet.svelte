@@ -2,22 +2,25 @@
     import HPBar from '../atoms/HPBar.svelte';
 
     export let stats = {};
-    export let derivedStats = { maxPv: 100, armor: 0, damage: 0 };
+    export let derivedStats = { maxPv: 100, ac: 10, attackMod: 0, damageDice: '1d2', weaponName: 'Mains nues' };
 
     $: maxPv = derivedStats?.maxPv || (stats.stats?.constitution || 10) * 10;
 
     $: statList = [
-        { label: 'Force', val: stats.stats?.force, icon: '💪', desc: 'Dégâts' },
+        { label: 'Force', val: stats.stats?.force, icon: '💪', desc: 'Attaque (mêlée)' },
         { label: 'Constitution', val: stats.stats?.constitution, icon: '🫀', desc: 'PV' },
-        { label: 'Vitesse', val: stats.stats?.vitesse, icon: '👟', desc: 'Armure' },
+        { label: 'Vitesse', val: stats.stats?.vitesse, icon: '👟', desc: 'CA / Attaque' },
         { label: 'Savoir', val: stats.stats?.savoir, icon: '📚', desc: 'Arcanes' },
         { label: 'Instinct', val: stats.stats?.instinct, icon: '👁️', desc: 'Perception' },
         { label: 'Charisme', val: stats.stats?.charisme, icon: '✨', desc: 'Social' }
     ];
 
+    $: attackBonus = derivedStats?.attackMod > 0 ? `+${derivedStats.attackMod}` : `${derivedStats?.attackMod || 0}`;
+
     $: derivedList = [
-        { label: 'Armure', val: derivedStats?.armor || 0, icon: '🛡️' },
-        { label: 'Dégâts', val: derivedStats?.damage || 0, icon: '⚔️' },
+        { label: 'CA', val: derivedStats?.ac || 10, icon: '🛡️' },
+        { label: 'Attaque', val: attackBonus, icon: '🎯' },
+        { label: 'Dégâts', val: derivedStats?.damageDice || '1d2', icon: '⚔️' },
         { label: 'PV Max', val: maxPv, icon: '❤️' }
     ];
 </script>
@@ -154,7 +157,7 @@
     /* Combat derived stats */
     .combat-stats {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 8px;
     }
 
@@ -296,7 +299,7 @@
         }
 
         .combat-stats {
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
         }
     }
 </style>
