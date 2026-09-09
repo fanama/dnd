@@ -2,14 +2,33 @@
     export let stats = {};
     export let pv = 0;
     export let maxPv = 0;
+    export let isNpc = false;
     export let onSave = (stats) => {};
     export let onSetPv = (pv) => {};
 
-    let editStats = { ...stats };
+    let editStats = {};
     let editPv = pv;
+    let dirty = false;
 
-    $: editStats = { ...stats };
-    $: editPv = pv;
+    $: {
+        if (!dirty) {
+            editStats = {
+                nom: stats?.nom ?? '',
+                background: stats?.background ?? '',
+                force: stats?.force ?? 0,
+                constitution: stats?.constitution ?? 0,
+                vitesse: stats?.vitesse ?? 0,
+                charisme: stats?.charisme ?? 0,
+                savoir: stats?.savoir ?? 0,
+                instinct: stats?.instinct ?? 0,
+            };
+            editPv = pv;
+        }
+    }
+
+    $: derivedMaxPv = Math.floor((Number(editStats.constitution) || 10) * 10);
+    $: derivedArmor = Math.floor((Number(editStats.vitesse) || 10) * 1.5);
+    $: derivedDamage = Math.floor((Number(editStats.force) || 10) * 2);
 
     const statFields = [
         { key: 'force', label: 'Force', icon: '💪' },
@@ -20,17 +39,74 @@
         { key: 'charisme', label: 'Charisme', icon: '✨' },
     ];
 
+    function markDirty() {
+        dirty = true;
+    }
+
     function saveStats() {
-        onSave({ ...editStats });
+        onSave({
+            nom: (editStats.nom || '').trim(),
+            background: (editStats.background || '').trim(),
+            force: Number(editStats.force) || 0,
+            constitution: Number(editStats.constitution) || 0,
+            vitesse: Number(editStats.vitesse) || 0,
+            charisme: Number(editStats.charisme) || 0,
+            savoir: Number(editStats.savoir) || 0,
+            instinct: Number(editStats.instinct) || 0,
+        });
+        dirty = false;
     }
 
     function savePv() {
-        onSetPv(Number(editPv));
+        onSetPv(Number(editPv) || 0);
     }
 </script>
 
 <div class="dnd-section stats-editor">
     <h3 class="section-title"><span>📊</span> Statistiques</h3>
+
+    <div class="identity-fields">
+        <div class="field">
+            <label class="field-label">⚜️ Nom du personnage</label>
+            <input
+                class="form-input"
+                type="text"
+                bind:value={editStats.nom}
+                placeholder="Nom"
+                on:input={markDirty}
+            />
+        </div>
+        {#if isNpc}
+            <div class="field">
+                <label class="field-label">🎭 Classe / Rôle</label>
+                <input
+                    class="form-input"
+                    type="text"
+                    bind:value={editStats.background}
+                    placeholder="Classe (ex: Garde)"
+                    on:input={markDirty}
+                />
+            </div>
+        {/if}
+    </div>
+
+    <div class="derived-grid">
+        <div class="derived-card">
+            <span class="derived-icon">🛡️</span>
+            <span class="derived-value">{derivedArmor}</span>
+            <span class="derived-label">Armure</span>
+        </div>
+        <div class="derived-card">
+            <span class="derived-icon">⚔️</span>
+            <span class="derived-value">{derivedDamage}</span>
+            <span class="derived-label">Dégâts</span>
+        </div>
+        <div class="derived-card">
+            <span class="derived-icon">❤️</span>
+            <span class="derived-value">{derivedMaxPv}</span>
+            <span class="derived-label">PV Max</span>
+        </div>
+    </div>
 
     <div class="stats-grid">
         {#each statFields as field}
@@ -43,12 +119,19 @@
                     class="stat-input"
                     type="number"
                     bind:value={editStats[field.key]}
-                    min="1"
+                    min="0"
                     max="30"
+                    on:input={markDirty}
                 />
             </div>
         {/each}
     </div>
+
+    {#if dirty}
+        <div class="dirty-hint">
+            <span>✏️ Modifications non sauvegardées</span>
+        </div>
+    {/if}
 
     <button class="btn-save" on:click={saveStats}>
         💾 Sauvegarder les Stats
@@ -59,16 +142,16 @@
         <div class="pv-row">
             <div class="pv-bar-wrap">
                 <div class="pv-bar">
-                    <div class="pv-bar-fill" style="width: {maxPv ? (editPv / maxPv * 100) : 100}%"></div>
+                    <div class="pv-bar-fill" style="width: {derivedMaxPv ? (editPv / derivedMaxPv * 100) : 100}%"></div>
                 </div>
-                <span class="pv-text">{editPv} / {maxPv}</span>
+                <span class="pv-text">{editPv} / {derivedMaxPv}</span>
             </div>
             <input
                 class="stat-input pv-input"
                 type="number"
                 bind:value={editPv}
                 min="0"
-                max={maxPv}
+                on:input={markDirty}
             />
             <button class="btn-save-sm" on:click={savePv}>OK</button>
         </div>
@@ -94,6 +177,82 @@
         border-bottom: 1px solid rgba(197, 160, 89, 0.12);
     }
 
+    /* Identity fields */
+    .identity-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .field-label {
+        font-family: 'MedievalSharp', cursive;
+        color: #7a6f5f;
+        font-size: 0.7rem;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 8px 10px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 6px;
+        color: #e8e0d4;
+        font-family: 'Alegreya', serif;
+        font-size: 0.9rem;
+        outline: none;
+        transition: border-color 0.2s ease;
+    }
+
+    .form-input:focus {
+        border-color: #c5a059;
+    }
+
+    /* Derived stats preview */
+    .derived-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+
+    .derived-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 10px 6px;
+        background: rgba(197, 160, 89, 0.08);
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 8px;
+    }
+
+    .derived-icon {
+        font-size: 1rem;
+        line-height: 1;
+    }
+
+    .derived-value {
+        font-family: 'Cinzel', serif;
+        color: #c5a059;
+        font-size: 1.4rem;
+        font-weight: 700;
+        line-height: 1.1;
+    }
+
+    .derived-label {
+        font-family: 'MedievalSharp', cursive;
+        color: #7a6f5f;
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    /* Stats grid */
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -143,6 +302,19 @@
         border-color: #c5a059;
     }
 
+    .dirty-hint {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.75rem;
+        color: #fbbf24;
+        padding: 8px 10px;
+        background: rgba(251, 191, 36, 0.08);
+        border: 1px solid rgba(251, 191, 36, 0.2);
+        border-radius: 6px;
+    }
+
     .btn-save {
         width: 100%;
         padding: 10px;
@@ -158,6 +330,11 @@
 
     .btn-save:hover {
         background: rgba(197, 160, 89, 0.25);
+    }
+
+    .btn-save:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     .pv-section {
@@ -186,6 +363,7 @@
 
     .pv-bar-fill {
         height: 100%;
+        max-width: 100%;
         background: linear-gradient(90deg, #22c55e, #16a34a);
         border-radius: 6px;
         transition: width 0.3s ease;
@@ -221,6 +399,18 @@
     @media (max-width: 600px) {
         .stats-grid {
             grid-template-columns: repeat(2, 1fr);
+        }
+
+        .derived-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .identity-fields {
+            grid-template-columns: 1fr;
+        }
+
+        .pv-row {
+            flex-wrap: wrap;
         }
     }
 </style>

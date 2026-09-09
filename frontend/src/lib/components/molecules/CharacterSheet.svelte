@@ -2,16 +2,23 @@
     import HPBar from '../atoms/HPBar.svelte';
 
     export let stats = {};
+    export let derivedStats = { maxPv: 100, armor: 0, damage: 0 };
 
-    $: maxPv = (stats.stats?.constitution || 10) * 10;
+    $: maxPv = derivedStats?.maxPv || (stats.stats?.constitution || 10) * 10;
 
     $: statList = [
-        { label: 'Force', val: stats.stats?.force, icon: '💪' },
-        { label: 'Constitution', val: stats.stats?.constitution, icon: '🫀' },
-        { label: 'Vitesse', val: stats.stats?.vitesse, icon: '👟' },
-        { label: 'Savoir', val: stats.stats?.savoir, icon: '📚' },
-        { label: 'Instinct', val: stats.stats?.instinct, icon: '👁️' },
-        { label: 'Charisme', val: stats.stats?.charisme, icon: '✨' }
+        { label: 'Force', val: stats.stats?.force, icon: '💪', desc: 'Dégâts' },
+        { label: 'Constitution', val: stats.stats?.constitution, icon: '🫀', desc: 'PV' },
+        { label: 'Vitesse', val: stats.stats?.vitesse, icon: '👟', desc: 'Armure' },
+        { label: 'Savoir', val: stats.stats?.savoir, icon: '📚', desc: 'Arcanes' },
+        { label: 'Instinct', val: stats.stats?.instinct, icon: '👁️', desc: 'Perception' },
+        { label: 'Charisme', val: stats.stats?.charisme, icon: '✨', desc: 'Social' }
+    ];
+
+    $: derivedList = [
+        { label: 'Armure', val: derivedStats?.armor || 0, icon: '🛡️' },
+        { label: 'Dégâts', val: derivedStats?.damage || 0, icon: '⚔️' },
+        { label: 'PV Max', val: maxPv, icon: '❤️' }
     ];
 </script>
 
@@ -20,6 +27,9 @@
         <div class="char-identity">
             <span class="char-label">Nom du Personnage</span>
             <h2 class="char-name">{stats.nom || 'Inconnu'}</h2>
+            {#if stats.alignement}
+                <span class="char-align">{stats.alignement}</span>
+            {/if}
         </div>
         <div class="char-class">
             <span class="char-label">Classe & Origine</span>
@@ -28,6 +38,17 @@
     </div>
 
     <div class="sheet-body">
+        <!-- Combat Stats -->
+        <div class="combat-stats">
+            {#each derivedList as d}
+                <div class="combat-stat">
+                    <span class="combat-icon">{d.icon}</span>
+                    <span class="combat-value">{d.val}</span>
+                    <span class="combat-label">{d.label}</span>
+                </div>
+            {/each}
+        </div>
+
         <!-- Stats Grid -->
         <div class="stats-grid">
             {#each statList as stat}
@@ -35,6 +56,7 @@
                     <span class="stat-icon">{stat.icon}</span>
                     <span class="stat-label">{stat.label}</span>
                     <span class="stat-value">{stat.val || 0}</span>
+                    <span class="stat-desc">{stat.desc}</span>
                 </div>
             {/each}
         </div>
@@ -43,7 +65,7 @@
         <div class="char-sidebar">
             <div class="sidebar-block">
                 <span class="sidebar-label">Lieu Actuel</span>
-                <span class="sidebar-value">{stats.lieu}</span>
+                <span class="sidebar-value">{stats.lieu || 'En Voyage...'}</span>
             </div>
             <div class="sidebar-divider"></div>
             <div class="sidebar-block">
@@ -109,6 +131,13 @@
         letter-spacing: 0.03em;
     }
 
+    .char-align {
+        font-family: 'Alegreya', serif;
+        font-size: 0.8rem;
+        font-style: italic;
+        color: #8b6544;
+    }
+
     .char-class-name {
         font-family: 'MedievalSharp', cursive;
         font-size: 1rem;
@@ -122,6 +151,46 @@
         gap: 16px;
     }
 
+    /* Combat derived stats */
+    .combat-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+
+    .combat-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 12px 6px;
+        background: linear-gradient(145deg, #5c4033, #4a332a);
+        border-radius: 8px;
+        color: #f4e4bc;
+        border: 1px solid rgba(92, 64, 51, 0.4);
+    }
+
+    .combat-icon {
+        font-size: 1.1rem;
+        line-height: 1;
+    }
+
+    .combat-value {
+        font-family: 'Cinzel', serif;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #d4af37;
+        line-height: 1.1;
+    }
+
+    .combat-label {
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #cbb893;
+    }
+
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -133,7 +202,7 @@
         flex-direction: column;
         align-items: center;
         gap: 2px;
-        padding: 10px 4px;
+        padding: 10px 4px 8px;
         background: rgba(232, 212, 169, 0.6);
         border: 1px solid rgba(92, 64, 51, 0.15);
         border-radius: 8px;
@@ -162,6 +231,14 @@
         font-size: 1.3rem;
         font-weight: 700;
         color: #2c1e16;
+        line-height: 1.1;
+    }
+
+    .stat-desc {
+        font-family: 'Alegreya', serif;
+        font-size: 0.6rem;
+        font-style: italic;
+        color: #8b6544;
     }
 
     .char-sidebar {
@@ -216,6 +293,10 @@
     @media (max-width: 480px) {
         .stats-grid {
             grid-template-columns: repeat(2, 1fr);
+        }
+
+        .combat-stats {
+            grid-template-columns: repeat(3, 1fr);
         }
     }
 </style>

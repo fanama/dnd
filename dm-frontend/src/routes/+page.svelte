@@ -212,16 +212,17 @@
                                 stats={selectedData.stats}
                                 pv={selectedData.pv}
                                 maxPv={selectedData.max_pv}
+                                isNpc={selectedIsNpc}
                                 onSave={(stats) => selectedIsNpc
-                                    ? dmAction('dm_edit_npc', { item_name: selected, stats, pv: 0, alignement: '' })
+                                    ? dmAction('dm_edit_npc', { item_name: selected, stats, pv: 0, alignement: '', overwrite: true })
                                     : dmAction('dm_edit_stats', { target_player: selected, stats })}
                                 onSetPv={(pv) => selectedIsNpc
-                                    ? dmAction('dm_edit_npc', { item_name: selected, stats: {}, pv, alignement: '' })
+                                    ? dmAction('dm_edit_npc', { item_name: selected, stats: {}, pv, alignement: '', overwrite: true })
                                     : dmAction('dm_set_pv', { target_player: selected, pv })}
                             />
 
                             <InventoryEditor
-                                inventory={selectedData.inventaire}
+                                inventory={selectedData.inventaire || []}
                                 onAdd={(item) => selectedIsNpc
                                     ? dmAction('dm_npc_add_item', { item_name: selected, item })
                                     : dmAction('dm_add_item', { target_player: selected, item })}
@@ -231,7 +232,7 @@
                             />
 
                             <SpellEditor
-                                spells={selectedData.sorts}
+                                spells={selectedData.sorts || []}
                                 onAdd={(spell) => selectedIsNpc
                                     ? dmAction('dm_npc_add_spell', { item_name: selected, spell })
                                     : dmAction('dm_add_spell', { target_player: selected, spell })}

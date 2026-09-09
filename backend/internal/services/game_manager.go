@@ -53,6 +53,7 @@ type Action struct {
 	Spell        domain.Sort  `json:"spell,omitempty"`
 	PV           float64      `json:"pv,omitempty"`
 	Alignement   string       `json:"alignement,omitempty"`
+	Overwrite    bool         `json:"overwrite,omitempty"`
 	NewName      string       `json:"new_name,omitempty"`
 	LocationBg   string       `json:"location_bg,omitempty"`
 }
@@ -300,7 +301,7 @@ func (gm *GameManager) HandleAction(pseudo string, action Action) {
 			gm.dmRemoveNPC(action.ItemName)
 			return
 		case "dm_edit_npc":
-			gm.dmEditNPC(action.ItemName, action.Stats, action.PV, action.Alignement)
+			gm.dmEditNPC(action.ItemName, action.Stats, action.PV, action.Alignement, action.Overwrite)
 			return
 		case "dm_move_npc":
 			gm.dmMoveNPC(action.ItemName, action.Destination)
@@ -707,18 +708,28 @@ func (gm *GameManager) dmRemoveNPC(name string) {
 	gm.NotifyChange()
 }
 
-func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, align string) {
+func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, align string, overwrite bool) {
 	npc, ok := gm.World.NPCs[name]
 	if !ok { return }
 	if stats.Nom != "" { npc.Stats.Nom = stats.Nom }
 	if stats.Background != "" { npc.Stats.Background = stats.Background }
-	if stats.Force != 0 { npc.Stats.Force = stats.Force }
-	if stats.Constitution != 0 { npc.Stats.Constitution = stats.Constitution }
-	if stats.Vitesse != 0 { npc.Stats.Vitesse = stats.Vitesse }
-	if stats.Charisme != 0 { npc.Stats.Charisme = stats.Charisme }
-	if stats.Savoir != 0 { npc.Stats.Savoir = stats.Savoir }
-	if stats.Instinct != 0 { npc.Stats.Instinct = stats.Instinct }
-	if pv > 0 { npc.CurrentPV = pv }
+	if overwrite {
+		npc.Stats.Force = stats.Force
+		npc.Stats.Constitution = stats.Constitution
+		npc.Stats.Vitesse = stats.Vitesse
+		npc.Stats.Charisme = stats.Charisme
+		npc.Stats.Savoir = stats.Savoir
+		npc.Stats.Instinct = stats.Instinct
+		npc.CurrentPV = pv
+	} else {
+		if stats.Force != 0 { npc.Stats.Force = stats.Force }
+		if stats.Constitution != 0 { npc.Stats.Constitution = stats.Constitution }
+		if stats.Vitesse != 0 { npc.Stats.Vitesse = stats.Vitesse }
+		if stats.Charisme != 0 { npc.Stats.Charisme = stats.Charisme }
+		if stats.Savoir != 0 { npc.Stats.Savoir = stats.Savoir }
+		if stats.Instinct != 0 { npc.Stats.Instinct = stats.Instinct }
+		if pv > 0 { npc.CurrentPV = pv }
+	}
 	if align != "" { npc.Alignement = align }
 	gm.broadcast(map[string]interface{}{
 		"type": "chat",

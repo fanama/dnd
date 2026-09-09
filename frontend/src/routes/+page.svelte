@@ -31,8 +31,6 @@
     function lootItem(name) {
         sendAction({ type: 'loot', loot_name: name });
     }
-
-    $: myStats = $gameState.players[$gameState.me];
 </script>
 
 <svelte:head>
@@ -68,7 +66,6 @@
         <div class="game-view">
             <GamePage
                 gameState={$gameState}
-                myStats={myStats}
                 onMove={move}
                 onHit={hit}
                 onUseItem={useItem}

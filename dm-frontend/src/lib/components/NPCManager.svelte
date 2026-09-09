@@ -165,7 +165,7 @@
                         <!-- Inventory -->
                         <div class="npc-inv">
                             <label class="field-label">Inventaire</label>
-                            {#each npc.inventaire as item, i}
+                            {#each (npc.inventaire || []) as item, i}
                                 <div class="npc-item">
                                     <span class="item-icon">{itemIcon(item)}</span>
                                     <span class="item-name">{item.nom}</span>
