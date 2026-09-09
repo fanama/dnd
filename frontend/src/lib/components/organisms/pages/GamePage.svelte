@@ -154,6 +154,23 @@
                             </div>
                         {/each}
                     </div>
+
+                    {#if gameState.npcs && gameState.npcs.length > 0}
+                        <h3 class="section-title npc-title">
+                            <span class="section-icon">🤝</span> PNJ Present ({gameState.npcs.length})
+                        </h3>
+                        <div class="players-list custom-scrollbar">
+                            {#each gameState.npcs as npc}
+                                <div class="player-card npc-card">
+                                    <div class="player-header">
+                                        <strong class="player-name">{npc.nom}</strong>
+                                        <span class="player-location">{npc.classe}</span>
+                                    </div>
+                                    <HPBar current={npc.pv} max={npc.max_pv} />
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
                 </div>
             </div>
 
@@ -422,6 +439,16 @@
     .player-card.self {
         border-color: rgba(34, 197, 94, 0.3);
         box-shadow: 0 0 12px rgba(34, 197, 94, 0.08);
+    }
+
+    .npc-title {
+        margin-top: 16px;
+        color: #93c5fd;
+    }
+
+    .npc-card {
+        border-color: rgba(147, 197, 253, 0.25);
+        background: rgba(30, 41, 59, 0.4);
     }
 
     .player-header {

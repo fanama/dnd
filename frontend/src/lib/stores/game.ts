@@ -17,6 +17,7 @@ interface GameState {
     me: string | null;
     location: string;
     players: Record<string, PlayerStats>;
+    npcs: any[];
     logs: string[];
     currentLocationObjects: any[];
     locations: Location[];
@@ -25,6 +26,7 @@ interface GameState {
 interface SyncData {
     type: 'sync';
     liste: Record<string, PlayerStats>;
+    npcs?: any;
     locations?: { nom: string; objects: any[] }[];
 }
 
@@ -37,6 +39,7 @@ export const gameState = writable<GameState>({
     me: null,
     location: 'En Voyage...',
     players: {},
+    npcs: [],
     logs: [],
     currentLocationObjects: [],
     locations: []
@@ -74,9 +77,14 @@ export function connect(pseudo: string, charName: string, charClass: string): vo
                     if (loc) currentLocationObjects = loc.objects;
                 }
 
+                // NPCs at current location
+                const npcList = data.npcs ? Object.values(data.npcs) : [];
+                const currentNpcs = npcList.filter((n: any) => n.lieu === (myStats ? myStats.lieu : s.location));
+
                 return {
                     ...s,
                     players: data.liste,
+                    npcs: currentNpcs,
                     location: myStats ? myStats.lieu : s.location,
                     currentLocationObjects: currentLocationObjects,
                     locations: data.locations || s.locations
