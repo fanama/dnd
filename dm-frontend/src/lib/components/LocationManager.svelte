@@ -8,7 +8,7 @@
     export let onRemoveQuest = (location, index) => {};
 
     let expandedLoc = null;
-    let newItem = { nom: '', prix: 0, isConsumable: false, bonusDegats: 0, bonusArmure: 0 };
+    let newItem = { nom: '', prix: 0, type: 'arme', bonusDegats: 0, bonusArmure: 0, desDegats: 'd6', isConsumable: false };
     let showAddFor = null;
     let editName = '';
     let editBg = '';
@@ -16,14 +16,30 @@
     let newQuest = { nom: '', objectif: '', obstacle: '', recompense: '' };
     let showQuestFor = null;
 
-    function toggle(loc) {
-        expandedLoc = expandedLoc === loc ? null : loc;
+    const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+
+    function buildItem() {
+        const base = {
+            nom: newItem.nom.trim(),
+            prix: newItem.prix,
+            encombrement: 0,
+            isConsumable: false,
+            bonusDegats: 0,
+            bonusArmure: 0,
+        };
+        if (newItem.type === 'arme') {
+            return { ...base, bonusDegats: newItem.bonusDegats, desDegats: newItem.desDegats };
+        }
+        if (newItem.type === 'armure') {
+            return { ...base, bonusArmure: newItem.bonusArmure };
+        }
+        return { ...base, isConsumable: newItem.isConsumable };
     }
 
     function addItem(loc) {
         if (!newItem.nom.trim()) return;
-        onAddItem(loc, { ...newItem });
-        newItem = { nom: '', prix: 0, isConsumable: false, bonusDegats: 0, bonusArmure: 0 };
+        onAddItem(loc, buildItem());
+        newItem = { nom: '', prix: 0, type: 'arme', bonusDegats: 0, bonusArmure: 0, desDegats: 'd6', isConsumable: false };
         showAddFor = null;
     }
 
@@ -86,7 +102,7 @@
     }
 
     function itemIcon(item) {
-        if (item.bonusDegats) return '⚔️';
+        if (item.bonusDegats || item.desDegats) return '⚔️';
         if (item.bonusArmure) return '🛡️';
         if (item.isConsumable) return '🧪';
         return '📦';
@@ -139,6 +155,7 @@
                             <div class="loc-item">
                                 <span class="item-icon">{itemIcon(item)}</span>
                                 <span class="item-name">{item.nom}</span>
+                                {#if item.desDegats}<span class="item-dice">1{item.desDegats}</span>{/if}
                                 <button class="btn-remove" on:click={() => onRemoveItem(loc.nom, i)}>✕</button>
                             </div>
                         {:else}
@@ -148,26 +165,56 @@
                         {#if showAddFor === loc.nom}
                             <div class="add-form fade-in">
                                 <input class="form-input" bind:value={newItem.nom} placeholder="Nom de l'objet" />
+                                <div class="type-row">
+                                    {#each ['arme', 'armure', 'objet'] as t}
+                                        <button
+                                            type="button"
+                                            class="type-btn"
+                                            class:active={newItem.type === t}
+                                            on:click={() => newItem.type = t}
+                                        >
+                                            {t === 'arme' ? '⚔️ Arme' : t === 'armure' ? '🛡️ Armure' : '📦 Objet'}
+                                        </button>
+                                    {/each}
+                                </div>
                                 <div class="form-row">
-                                    <label class="form-check">
-                                        <input type="checkbox" bind:checked={newItem.isConsumable} />
-                                        <span>Consommable</span>
-                                    </label>
-                                    <div class="mini-field">
+                                    <div class="mini-field flex-1">
                                         <label>Prix</label>
                                         <input class="form-input-sm" type="number" bind:value={newItem.prix} min="0" />
                                     </div>
+                                    {#if newItem.type === 'arme'}
+                                        <div class="mini-field">
+                                            <label>Dés dégâts</label>
+                                            <select class="form-select-sm" bind:value={newItem.desDegats}>
+                                                {#each diceOptions as d}
+                                                    <option value={d}>1{d}</option>
+                                                {/each}
+                                            </select>
+                                        </div>
+                                    {/if}
                                 </div>
-                                <div class="form-row">
-                                    <div class="mini-field">
-                                        <label>ATK</label>
-                                        <input class="form-input-sm" type="number" bind:value={newItem.bonusDegats} min="0" />
+                                {#if newItem.type === 'arme'}
+                                    <div class="form-row">
+                                        <div class="mini-field">
+                                            <label>Bonus ATK</label>
+                                            <input class="form-input-sm" type="number" bind:value={newItem.bonusDegats} min="0" />
+                                        </div>
                                     </div>
-                                    <div class="mini-field">
-                                        <label>DEF</label>
-                                        <input class="form-input-sm" type="number" bind:value={newItem.bonusArmure} min="0" />
+                                {:else if newItem.type === 'armure'}
+                                    <div class="form-row">
+                                        <div class="mini-field">
+                                            <label>Bonus DEF</label>
+                                            <input class="form-input-sm" type="number" bind:value={newItem.bonusArmure} min="0" />
+                                        </div>
                                     </div>
-                                </div>
+                                {:else}
+                                    <div class="form-row">
+                                        <label class="form-check">
+                                            <input type="checkbox" bind:checked={newItem.isConsumable} />
+                                            <span>Consommable</span>
+                                        </label>
+                                    </div>
+                                {/if}
                                 <div class="form-actions">
                                     <button class="btn-cancel" on:click={() => showAddFor = null}>Annuler</button>
                                     <button class="btn-add" on:click={() => addItem(loc.nom)}>Ajouter</button>
@@ -379,6 +426,16 @@
         font-size: 0.8rem;
     }
 
+    .item-dice {
+        font-family: 'Alegreya', serif;
+        font-size: 0.6rem;
+        color: #c4b5fd;
+        background: rgba(139, 92, 246, 0.15);
+        padding: 1px 5px;
+        border-radius: 4px;
+        white-space: nowrap;
+    }
+
     .loc-item.quest {
         border: 1px solid rgba(139, 92, 246, 0.25);
         background: rgba(69, 39, 160, 0.1);
@@ -482,6 +539,47 @@
         display: flex;
         gap: 8px;
         align-items: center;
+    }
+
+    .type-row {
+        display: flex;
+        gap: 6px;
+    }
+
+    .type-btn {
+        flex: 1;
+        padding: 6px 4px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 6px;
+        color: #7a6f5f;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.7rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .type-btn.active {
+        background: rgba(197, 160, 89, 0.18);
+        border-color: #c5a059;
+        color: #c5a059;
+    }
+
+    .type-btn:hover:not(.active) {
+        border-color: rgba(197, 160, 89, 0.4);
+        color: #a09080;
+    }
+
+    .form-select-sm {
+        padding: 4px 6px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 4px;
+        color: #e8e0d4;
+        font-family: 'Alegreya', serif;
+        font-size: 0.75rem;
+        text-align: center;
+        outline: none;
     }
 
     .form-check {

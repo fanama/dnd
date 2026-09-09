@@ -30,11 +30,19 @@ func (s *Stats) BaseAC() float64 {
 }
 
 type Sort struct {
-	Nom        string  `json:"nom"`
-	NiveauSort float64 `json:"niveauSort"`
-	EcoleMagie string  `json:"ecoleMagie"`
-	Portee     string  `json:"portee"`
-	Duree      string  `json:"duree"`
+	Nom        string    `json:"nom"`
+	NiveauSort float64   `json:"niveauSort"`
+	EcoleMagie string    `json:"ecoleMagie"`
+	Portee     string    `json:"portee"`
+	Duree      string    `json:"duree"`
+	Bonus      float64   `json:"bonus,omitempty"`
+	DesDégâts  string    `json:"desDegats,omitempty"`
+	Buff       *SortBuff `json:"buff,omitempty"`
+}
+
+type SortBuff struct {
+	Stat   string  `json:"stat"`
+	Valeur float64 `json:"valeur"`
 }
 
 type Quest struct {
@@ -51,6 +59,7 @@ type Item struct {
 	IsConsumable bool    `json:"isConsumable"`
 	BonusDégâts  float64 `json:"bonusDegats"`
 	BonusArmure  float64 `json:"bonusArmure"`
+	DesDégâts    string  `json:"desDegats,omitempty"`
 }
 
 type Equipment struct {

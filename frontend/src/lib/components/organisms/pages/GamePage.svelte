@@ -10,6 +10,7 @@
     export let gameState;
     export let onMove = (dest) => {};
     export let onHit = (target) => {};
+    export let onCastSpell = (spell, target) => {};
     export let onUseItem = (name) => {};
     export let onLootItem = (name) => {};
     export let onEquip = (name) => {};
@@ -18,6 +19,7 @@
     export let onCompleteQuest = (name) => {};
 
     let activeTab = 'charsheet';
+    let castingSpell = null;
 
     $: myStatsData = $myStats;
     $: myDerived = $myDerivedStats;
@@ -151,7 +153,38 @@
                                     <span class="spell-meta-item">🏛️ {sort.ecoleMagie || 'Arcanes'}</span>
                                     {#if sort.portee}<span class="spell-meta-item">📏 {sort.portee}</span>{/if}
                                     {#if sort.duree}<span class="spell-meta-item">⏳ {sort.duree}</span>{/if}
+                                    {#if sort.bonus}<span class="spell-meta-item">✨ +{sort.bonus}</span>{/if}
+                                    {#if sort.desDegats}<span class="spell-meta-item">🎲 1{sort.desDegats}</span>{/if}
+                                    {#if sort.buff}<span class="spell-meta-item">⬆️ +{sort.buff.valeur} {sort.buff.stat}</span>{/if}
                                 </div>
+                                <Button
+                                    variant={sort.buff ? 'success' : 'arcane'}
+                                    className="w-full py-1 text-xs"
+                                    onClick={() => castingSpell = castingSpell === sort.nom ? null : sort.nom}
+                                >
+                                    🔮 Lancer
+                                </Button>
+                                {#if castingSpell === sort.nom}
+                                    <div class="cast-picker fade-in">
+                                        <span class="cast-picker-title">Choisir une cible</span>
+                                        <div class="cast-targets">
+                                            <button class="cast-target self" on:click={() => { onCastSpell(sort.nom, gameState.me); castingSpell = null; }}>
+                                                🧍 Moi-même
+                                            </button>
+                                            {#each sameZonePlayers as [p, v]}
+                                                <button class="cast-target" on:click={() => { onCastSpell(sort.nom, p); castingSpell = null; }}>
+                                                    🎯 {v.nom}
+                                                </button>
+                                            {/each}
+                                            {#each (gameState.npcs || []) as npc}
+                                                <button class="cast-target npc" on:click={() => { onCastSpell(sort.nom, npc.nom); castingSpell = null; }}>
+                                                    👹 {npc.nom}
+                                                </button>
+                                            {/each}
+                                        </div>
+                                        <button class="cast-cancel" on:click={() => castingSpell = null}>✕ Annuler</button>
+                                    </div>
+                                {/if}
                             </div>
                         {/each}
                     </div>
@@ -657,6 +690,69 @@
         font-family: 'Alegreya', serif;
         font-size: 0.75rem;
         color: #9d8ecb;
+    }
+
+    .cast-picker {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        background: rgba(69, 39, 160, 0.12);
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        border-radius: 8px;
+    }
+
+    .cast-picker-title {
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.75rem;
+        color: #c4b5fd;
+    }
+
+    .cast-targets {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .cast-target {
+        width: 100%;
+        text-align: left;
+        padding: 8px 10px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(197, 160, 89, 0.15);
+        border-radius: 6px;
+        color: #e8e0d4;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .cast-target:hover {
+        border-color: rgba(197, 160, 89, 0.4);
+        background: rgba(197, 160, 89, 0.1);
+    }
+
+    .cast-target.self {
+        border-color: rgba(34, 197, 94, 0.35);
+    }
+
+    .cast-target.npc {
+        border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .cast-cancel {
+        align-self: flex-end;
+        background: transparent;
+        border: none;
+        color: #7a6f5f;
+        font-family: 'Alegreya', serif;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
+
+    .cast-cancel:hover {
+        color: #ef5350;
     }
 
     /* Equip slots */

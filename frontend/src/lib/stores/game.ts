@@ -7,6 +7,12 @@ export interface Item {
     isConsumable: boolean;
     bonusDegats: number;
     bonusArmure: number;
+    desDegats?: string;
+}
+
+export interface SortBuff {
+    stat: string;
+    valeur: number;
 }
 
 export interface Sort {
@@ -15,6 +21,9 @@ export interface Sort {
     ecoleMagie: string;
     portee: string;
     duree: string;
+    bonus?: number;
+    desDegats?: string;
+    buff?: SortBuff;
 }
 
 export interface Equipment {
@@ -97,14 +106,27 @@ export interface WeaponInfo {
     label: string;
 }
 
+function parseDiceSides(s: string): number {
+    let t = (s || '').trim().toLowerCase();
+    const i = t.indexOf('d');
+    if (i >= 0) t = t.slice(i + 1);
+    const n = parseInt(t, 10);
+    return Number.isFinite(n) && n >= 2 ? n : 0;
+}
+
 export function getWeaponInfo(item: Item | null): WeaponInfo {
     if (!item) return { sides: 2, ranged: false, label: '1d2' };
     const n = normalizeName(item.nom);
-    if (n.includes('dague')) return { sides: 4, ranged: false, label: '1d4' };
-    if (n.includes('arbalete') || n.includes('carquois')) return { sides: 8, ranged: true, label: '1d8' };
-    if (n.includes('arc')) return { sides: 8, ranged: true, label: '1d8' };
-    if (n.includes('epee')) return { sides: 6, ranged: false, label: '1d6' };
-    return { sides: 6, ranged: false, label: '1d6' };
+    let sides: number;
+    if (n.includes('dague')) sides = 4;
+    else if (n.includes('arbalete') || n.includes('carquois')) sides = 8;
+    else if (n.includes('arc')) sides = 8;
+    else if (n.includes('epee')) sides = 6;
+    else sides = 6;
+    const ranged = n.includes('arc') || n.includes('arbalete') || n.includes('carquois');
+    const custom = parseDiceSides(item.desDegats);
+    if (custom) sides = custom;
+    return { sides, ranged, label: `1d${sides}` };
 }
 
 function signed(v: number): string {
@@ -147,7 +169,7 @@ export function getDerivedStats(s: PlayerStats | undefined): DerivedStats {
 export function getItemCategory(item: Item | string): 'weapon' | 'armor' | 'consumable' | 'misc' {
     if (typeof item === 'string') return 'misc';
     if (item.isConsumable) return 'consumable';
-    if (item.bonusDegats > 0) return 'weapon';
+    if (item.bonusDegats > 0 || item.desDegats) return 'weapon';
     if (item.bonusArmure > 0) return 'armor';
     return 'misc';
 }

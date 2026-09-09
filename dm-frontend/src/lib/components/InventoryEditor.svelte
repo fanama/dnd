@@ -6,22 +6,56 @@
     let newItem = {
         nom: '',
         prix: 0,
-        isConsumable: false,
+        type: 'arme',
         bonusDegats: 0,
         bonusArmure: 0,
+        desDegats: 'd6',
+        isConsumable: false,
     };
 
     let showForm = false;
 
+    const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+
+    function buildItem() {
+        const base = {
+            nom: newItem.nom.trim(),
+            prix: newItem.prix,
+            encombrement: 0,
+            isConsumable: false,
+            bonusDegats: 0,
+            bonusArmure: 0,
+        };
+        if (newItem.type === 'arme') {
+            return { ...base, bonusDegats: newItem.bonusDegats, desDegats: newItem.desDegats };
+        }
+        if (newItem.type === 'armure') {
+            return { ...base, bonusArmure: newItem.bonusArmure };
+        }
+        return { ...base, isConsumable: newItem.isConsumable };
+    }
+
+    function resetItemForm() {
+        newItem = {
+            nom: '',
+            prix: 0,
+            type: 'arme',
+            bonusDegats: 0,
+            bonusArmure: 0,
+            desDegats: 'd6',
+            isConsumable: false,
+        };
+    }
+
     function addItem() {
         if (!newItem.nom.trim()) return;
-        onAdd({ ...newItem });
-        newItem = { nom: '', prix: 0, isConsumable: false, bonusDegats: 0, bonusArmure: 0 };
+        onAdd(buildItem());
+        resetItemForm();
         showForm = false;
     }
 
     function itemIcon(item) {
-        if (item.bonusDegats) return '⚔️';
+        if (item.bonusDegats || item.desDegats) return '⚔️';
         if (item.bonusArmure) return '🛡️';
         if (item.isConsumable) return '🧪';
         return '📦';
@@ -40,6 +74,7 @@
                     <div class="inv-badges">
                         {#if item.prix}<span class="badge gold">💰 {item.prix}p</span>{/if}
                         {#if item.bonusDegats}<span class="badge atk">⚔️ +{item.bonusDegats}</span>{/if}
+                        {#if item.desDegats}<span class="badge dmg">🎲 1{item.desDegats}</span>{/if}
                         {#if item.bonusArmure}<span class="badge def">🛡️ +{item.bonusArmure}</span>{/if}
                         {#if item.isConsumable}<span class="badge con">🧪</span>{/if}
                     </div>
@@ -56,26 +91,56 @@
     {#if showForm}
         <div class="add-form fade-in">
             <input class="form-input" bind:value={newItem.nom} placeholder="Nom de l'objet" />
+            <div class="type-row">
+                {#each ['arme', 'armure', 'objet'] as t}
+                    <button
+                        type="button"
+                        class="type-btn"
+                        class:active={newItem.type === t}
+                        on:click={() => newItem.type = t}
+                    >
+                        {t === 'arme' ? '⚔️ Arme' : t === 'armure' ? '🛡️ Armure' : '📦 Objet'}
+                    </button>
+                {/each}
+            </div>
             <div class="form-row">
-                <label class="form-check">
-                    <input type="checkbox" bind:checked={newItem.isConsumable} />
-                    <span>Consommable</span>
-                </label>
                 <div class="mini-field">
                     <label>Prix</label>
                     <input class="form-input-sm" type="number" bind:value={newItem.prix} min="0" />
                 </div>
+                {#if newItem.type === 'arme'}
+                    <div class="mini-field">
+                        <label>Dés de dégâts</label>
+                        <select class="form-select-sm" bind:value={newItem.desDegats}>
+                            {#each diceOptions as d}
+                                <option value={d}>1{d}</option>
+                            {/each}
+                        </select>
+                    </div>
+                {/if}
             </div>
-            <div class="form-row">
-                <div class="mini-field">
-                    <label>ATK</label>
-                    <input class="form-input-sm" type="number" bind:value={newItem.bonusDegats} min="0" />
+            {#if newItem.type === 'arme'}
+                <div class="form-row">
+                    <div class="mini-field">
+                        <label>Bonus ATK</label>
+                        <input class="form-input-sm" type="number" bind:value={newItem.bonusDegats} min="0" />
+                    </div>
                 </div>
-                <div class="mini-field">
-                    <label>DEF</label>
-                    <input class="form-input-sm" type="number" bind:value={newItem.bonusArmure} min="0" />
+            {:else if newItem.type === 'armure'}
+                <div class="form-row">
+                    <div class="mini-field">
+                        <label>Bonus DEF</label>
+                        <input class="form-input-sm" type="number" bind:value={newItem.bonusArmure} min="0" />
+                    </div>
                 </div>
-            </div>
+            {:else}
+                <div class="form-row">
+                    <label class="form-check">
+                        <input type="checkbox" bind:checked={newItem.isConsumable} />
+                        <span>Consommable</span>
+                    </label>
+                </div>
+            {/if}
             <div class="form-actions">
                 <button class="btn-cancel" on:click={() => showForm = false}>Annuler</button>
                 <button class="btn-add" on:click={addItem}>Ajouter</button>
@@ -163,6 +228,7 @@
     .badge.atk { background: rgba(239, 68, 68, 0.15); color: #ef5350; }
     .badge.def { background: rgba(66, 165, 245, 0.15); color: #42a5f5; }
     .badge.con { background: rgba(46, 125, 50, 0.15); color: #66bb6a; }
+    .badge.dmg { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
 
     .btn-remove {
         width: 24px;
@@ -223,6 +289,47 @@
         display: flex;
         gap: 10px;
         align-items: center;
+    }
+
+    .type-row {
+        display: flex;
+        gap: 6px;
+    }
+
+    .type-btn {
+        flex: 1;
+        padding: 7px 6px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 6px;
+        color: #7a6f5f;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .type-btn.active {
+        background: rgba(197, 160, 89, 0.18);
+        border-color: #c5a059;
+        color: #c5a059;
+    }
+
+    .type-btn:hover:not(.active) {
+        border-color: rgba(197, 160, 89, 0.4);
+        color: #a09080;
+    }
+
+    .form-select-sm {
+        padding: 6px 8px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 4px;
+        color: #e8e0d4;
+        font-family: 'Alegreya', serif;
+        font-size: 0.85rem;
+        text-align: center;
+        outline: none;
     }
 
     .form-check {

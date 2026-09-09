@@ -18,6 +18,7 @@ export interface Item {
     isConsumable: boolean;
     bonusDegats: number;
     bonusArmure: number;
+    desDegats?: string;
 }
 
 export interface Sort {
@@ -26,6 +27,9 @@ export interface Sort {
     ecoleMagie: string;
     portee: string;
     duree: string;
+    bonus?: number;
+    desDegats?: string;
+    buff?: { stat: string; valeur: number };
 }
 
 export interface Equipment {

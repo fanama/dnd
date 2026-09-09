@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 
 	"dnd-backend/internal/domain"
@@ -66,23 +67,45 @@ func normalizeName(s string) string {
 	return strings.ToLower(replacer.Replace(s))
 }
 
-// weaponInfo returns the weapon damage dice (number of sides) and whether it is ranged (uses Vitesse).
+// parseDiceSides extracts the number of faces from a dice string like "d8" or "1d8".
+func parseDiceSides(s string) int {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, 'd'); i >= 0 {
+		s = s[i+1:]
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 2 {
+		return 0
+	}
+	return n
+}
+
+// weaponInfo returns the weapon damage dice (number of faces) and whether it is ranged (uses Vitesse).
+// An explicit dice value on the item overrides the dice guessed from its name.
 func weaponInfo(w *domain.Item) (sides int, ranged bool) {
 	if w == nil {
 		return 2, false // Mains nues (1d2)
 	}
+	norm := normalizeName(w.Nom)
+	ranged = strings.Contains(norm, "arc") || strings.Contains(norm, "arbalete") || strings.Contains(norm, "carquois")
 	switch {
-	case strings.Contains(normalizeName(w.Nom), "dague"):
-		return 4, false
-	case strings.Contains(normalizeName(w.Nom), "arbalete") || strings.Contains(normalizeName(w.Nom), "carquois"):
-		return 8, true
-	case strings.Contains(normalizeName(w.Nom), "arc"):
-		return 8, true
-	case strings.Contains(normalizeName(w.Nom), "epee"):
-		return 6, false
+	case strings.Contains(norm, "dague"):
+		sides = 4
+	case strings.Contains(norm, "arbalete") || strings.Contains(norm, "carquois"):
+		sides = 8
+	case strings.Contains(norm, "arc"):
+		sides = 8
+	case strings.Contains(norm, "epee"):
+		sides = 6
 	default:
-		return 6, false
+		sides = 6
 	}
+	if w.DesDégâts != "" {
+		if faces := parseDiceSides(w.DesDégâts); faces > 0 {
+			sides = faces
+		}
+	}
+	return sides, ranged
 }
 
 func signed(v float64) string {
@@ -143,8 +166,9 @@ func resolvePhysicalAttack(attacker, target *domain.Character) string {
 	return fmt.Sprintf("❌ %s attaque %s avec %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, target.Stats.Nom, weaponName, rollLabel, ac)
 }
 
-func resolveSpellAttack(attacker, target *domain.Character, spellName string) string {
+func resolveSpellAttack(attacker, target *domain.Character, spell domain.Sort) string {
 	spellMod := domain.AbilityModifier(attacker.Stats.Savoir)
+	bonus := spell.Bonus
 
 	armorBonus := 0.0
 	if target.Equipement.Armure != nil {
@@ -154,11 +178,11 @@ func resolveSpellAttack(attacker, target *domain.Character, spellName string) st
 
 	roll := rollD20Fn()
 	if roll == 1 {
-		return fmt.Sprintf("🕯️ %s lance %s sur %s ! [1d20 = 1] ❌ Raté !", attacker.Stats.Nom, spellName, target.Stats.Nom)
+		return fmt.Sprintf("🕯️ %s lance %s sur %s ! [1d20 = 1] ❌ Raté !", attacker.Stats.Nom, spell.Nom, target.Stats.Nom)
 	}
 
-	total := float64(roll) + spellMod
-	rollLabel := fmt.Sprintf("1d20%+s = %.0f", signed(spellMod), total)
+	total := float64(roll) + spellMod + bonus
+	rollLabel := fmt.Sprintf("1d20%+s%+s = %.0f", signed(spellMod), signed(bonus), total)
 
 	if roll == 20 || total >= ac {
 		isCrit := roll == 20
@@ -166,16 +190,60 @@ func resolveSpellAttack(attacker, target *domain.Character, spellName string) st
 		if isCrit {
 			critMark = " 💥 CRITIQUE !"
 		}
-		dmg := attacker.Stats.Savoir * 1.5
+		spellName := spell.Nom
+		if spell.DesDégâts == "" {
+			dmg := attacker.Stats.Savoir * 1.5
+			if isCrit {
+				dmg *= 2
+			}
+			target.CurrentPV -= dmg
+			return fmt.Sprintf("🔥%s %s lance %s sur %s ! Jet %s vs CA %.0f → Touché ! Dégâts magiques : %.0f. (PV : %.0f)",
+				critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dmg, target.CurrentPV)
+		}
+		sides := parseDiceSides(spell.DesDégâts)
+		if sides <= 0 {
+			sides = 6
+		}
+		dieCount := 1
+		dieDesc := fmt.Sprintf("1d%d", sides)
 		if isCrit {
-			dmg *= 2
+			dieCount = 2
+			dieDesc = fmt.Sprintf("2d%d", sides)
+		}
+		dmg := float64(rollDiceFn(dieCount, sides))
+		if dmg < 1 {
+			dmg = 1
 		}
 		target.CurrentPV -= dmg
-		return fmt.Sprintf("🔥%s %s lance %s sur %s ! Jet %s vs CA %.0f → Touché ! Dégâts magiques : %.0f. (PV : %.0f)",
-			critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dmg, target.CurrentPV)
+		return fmt.Sprintf("🔥%s %s lance %s sur %s ! Jet %s vs CA %.0f → Touché ! Dégâts : [%s = %.0f]. (PV : %.0f)",
+			critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dieDesc, dmg, target.CurrentPV)
 	}
 
-	return fmt.Sprintf("❌ %s lance %s sur %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac)
+	return fmt.Sprintf("❌ %s lance %s sur %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, spell.Nom, target.Stats.Nom, rollLabel, ac)
+}
+
+func applyStatsBuff(stats *domain.Stats, buff domain.SortBuff) (bool, string) {
+	switch strings.ToLower(strings.TrimSpace(buff.Stat)) {
+	case "force":
+		stats.Force += buff.Valeur
+		return true, "Force"
+	case "constitution":
+		stats.Constitution += buff.Valeur
+		return true, "Constitution"
+	case "vitesse":
+		stats.Vitesse += buff.Valeur
+		return true, "Vitesse"
+	case "charisme":
+		stats.Charisme += buff.Valeur
+		return true, "Charisme"
+	case "savoir":
+		stats.Savoir += buff.Valeur
+		return true, "Savoir"
+	case "instinct":
+		stats.Instinct += buff.Valeur
+		return true, "Instinct"
+	}
+	return false, buff.Stat
 }
 
 func (gm *GameManager) getTargetCharacter(targetPseudo string) *domain.Character {
@@ -194,7 +262,7 @@ func (gm *GameManager) actionEquip(char *domain.Character, itemName string) {
 		}
 		equipped := it
 		switch {
-		case it.BonusDégâts > 0:
+		case it.BonusDégâts > 0 || it.DesDégâts != "":
 			char.Equipement.Arme = &equipped
 			gm.chat("🗡️ %s équipe %s !", char.Stats.Nom, it.Nom)
 		case it.BonusArmure > 0:
@@ -265,14 +333,56 @@ func (gm *GameManager) spawnLoot(locationName string) {
 }
 
 func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string, targetPseudo string) {
-	target := gm.getTargetCharacter(targetPseudo)
-	if target == nil || char.Lieu != target.Lieu {
+	var spell domain.Sort
+	found := false
+	for _, s := range char.Sorts {
+		if s.Nom == spellName {
+			spell = s
+			found = true
+			break
+		}
+	}
+	if !found {
 		return
 	}
 
-	msg := resolveSpellAttack(char, target, spellName)
+	if targetChar := gm.getTargetCharacter(targetPseudo); targetChar != nil && char.Lieu == targetChar.Lieu {
+		if spell.Buff != nil {
+			if ok, label := applyStatsBuff(&targetChar.Stats, *spell.Buff); ok {
+				gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
+					char.Stats.Nom, spell.Nom, targetChar.Stats.Nom, spell.Buff.Valeur, label)
+			}
+			gm.saveCharacterState(targetPseudo, targetChar)
+			return
+		}
+		msg := resolveSpellAttack(char, targetChar, spell)
+		gm.chat("%s", msg)
+		gm.checkDeath(targetChar)
+		gm.saveCharacterState(targetPseudo, targetChar)
+		return
+	}
+
+	npc, ok := gm.World.NPCs[targetPseudo]
+	if !ok || char.Lieu != npc.Lieu {
+		return
+	}
+	if spell.Buff != nil {
+		if ok2, label := applyStatsBuff(&npc.Stats, *spell.Buff); ok2 {
+			gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
+				char.Stats.Nom, spell.Nom, npc.Stats.Nom, spell.Buff.Valeur, label)
+		}
+		gm.persistWorld()
+		return
+	}
+	msg := resolveSpellAttack(char, npc, spell)
 	gm.chat("%s", msg)
-	gm.checkDeath(target)
+	if npc.CurrentPV < 0 {
+		npc.CurrentPV = 0
+	}
+	if npc.CurrentPV == 0 {
+		gm.chat("☠️ %s est tombé !", npc.Stats.Nom)
+	}
+	gm.persistWorld()
 }
 
 func (gm *GameManager) actionConsume(char *domain.Character, itemName string) {

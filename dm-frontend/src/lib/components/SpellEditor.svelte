@@ -9,6 +9,10 @@
         ecoleMagie: '',
         portee: 'Courte',
         duree: 'Instant',
+        bonus: 0,
+        desDegats: '',
+        buffStat: 'force',
+        buffValeur: 0,
     };
 
     let showForm = false;
@@ -16,11 +20,23 @@
     const ecoles = ['Évocations', 'Guérison', 'Enchantement', 'Illusion', 'Nécromancie', 'Transmutation', 'Abjuration', 'Divination'];
     const portees = ['Contact', 'Courte', 'Moyenne', 'Longue', 'Illimitée'];
     const durees = ['Instant', '1 round', '1 minute', '10 minutes', '1 heure', 'Permanent'];
+    const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+    const buffStats = ['force', 'constitution', 'vitesse', 'charisme', 'savoir', 'instinct'];
 
     function addSpell() {
         if (!newSpell.nom.trim()) return;
-        onAdd({ ...newSpell });
-        newSpell = { nom: '', niveauSort: 1, ecoleMagie: '', portee: 'Courte', duree: 'Instant' };
+        const spell = {
+            nom: newSpell.nom.trim(),
+            niveauSort: newSpell.niveauSort,
+            ecoleMagie: newSpell.ecoleMagie,
+            portee: newSpell.portee,
+            duree: newSpell.duree,
+            ...(newSpell.bonus ? { bonus: newSpell.bonus } : {}),
+            ...(newSpell.desDegats ? { desDegats: newSpell.desDegats } : {}),
+            ...(newSpell.buffValeur ? { buff: { stat: newSpell.buffStat, valeur: newSpell.buffValeur } } : {}),
+        };
+        onAdd(spell);
+        newSpell = { nom: '', niveauSort: 1, ecoleMagie: '', portee: 'Courte', duree: 'Instant', bonus: 0, desDegats: '', buffStat: 'force', buffValeur: 0 };
         showForm = false;
     }
 </script>
@@ -38,6 +54,9 @@
                         {#if spell.ecoleMagie}<span class="badge school">{spell.ecoleMagie}</span>{/if}
                         {#if spell.niveauSort}<span class="badge level">Nv.{spell.niveauSort}</span>{/if}
                         {#if spell.portee}<span class="badge range">{spell.portee}</span>{/if}
+                        {#if spell.bonus}<span class="badge atk">✨ +{spell.bonus} attaque</span>{/if}
+                        {#if spell.desDegats}<span class="badge dmg">🎲 1{spell.desDegats}</span>{/if}
+                        {#if spell.buff}<span class="badge buff">⬆️ +{spell.buff.valeur} {spell.buff.stat}</span>{/if}
                     </div>
                 </div>
                 <button class="btn-remove" on:click={() => onRemove(i)}>✕</button>
@@ -83,6 +102,35 @@
                             <option value={d}>{d}</option>
                         {/each}
                     </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="mini-field">
+                    <label>Bonus attaque</label>
+                    <input class="form-input-sm" type="number" bind:value={newSpell.bonus} min="0" />
+                </div>
+                <div class="mini-field flex-1">
+                    <label>Dés de dégâts</label>
+                    <select class="form-select" bind:value={newSpell.desDegats}>
+                        <option value="">—</option>
+                        {#each diceOptions as d}
+                            <option value={d}>1{d}</option>
+                        {/each}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="mini-field flex-1">
+                    <label>Buff (stat)</label>
+                    <select class="form-select" bind:value={newSpell.buffStat}>
+                        {#each buffStats as s}
+                            <option value={s}>{s}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="mini-field">
+                    <label>+ Valeur</label>
+                    <input class="form-input-sm" type="number" bind:value={newSpell.buffValeur} min="0" />
                 </div>
             </div>
             <div class="form-actions">
@@ -171,6 +219,9 @@
     .badge.school { background: rgba(147, 51, 234, 0.15); color: #a78bfa; }
     .badge.level { background: rgba(197, 160, 89, 0.15); color: #c5a059; }
     .badge.range { background: rgba(66, 165, 245, 0.15); color: #42a5f5; }
+    .badge.atk { background: rgba(239, 68, 68, 0.15); color: #ef5350; }
+    .badge.dmg { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
+    .badge.buff { background: rgba(46, 125, 50, 0.15); color: #66bb6a; }
 
     .btn-remove {
         width: 24px;

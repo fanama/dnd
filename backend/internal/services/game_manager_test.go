@@ -44,24 +44,32 @@ func TestBaseAC(t *testing.T) {
 }
 
 func TestWeaponInfo(t *testing.T) {
-	cases := []struct {
-		name   string
-		item   *domain.Item
-		sides  int
-		ranged bool
-	}{
-		{name: "nil = mains nues", item: nil, sides: 2, ranged: false},
-		{name: "Dague", item: &domain.Item{Nom: "Dague"}, sides: 4, ranged: false},
-		{name: "Épée", item: &domain.Item{Nom: "Épée"}, sides: 6, ranged: false},
-		{name: "Arc", item: &domain.Item{Nom: "Arc"}, sides: 8, ranged: true},
-		{name: "Arbalète", item: &domain.Item{Nom: "Arbalète"}, sides: 8, ranged: true},
-		{name: "Hache", item: &domain.Item{Nom: "Hache de Guerre"}, sides: 6, ranged: false},
-	}
-	for _, c := range cases {
-		sides, ranged := weaponInfo(c.item)
-		if sides != c.sides || ranged != c.ranged {
-			t.Errorf("%s: weaponInfo = (%d, %v), want (%d, %v)", c.name, sides, ranged, c.sides, c.ranged)
+	caseNameFn := func(name string, item *domain.Item, sides int, ranged bool) {
+		sidesGot, rangedGot := weaponInfo(item)
+		if sidesGot != sides || rangedGot != ranged {
+			t.Errorf("%s: weaponInfo = (%d, %v), want (%d, %v)", name, sidesGot, rangedGot, sides, ranged)
 		}
+	}
+	caseNameFn("nil = mains nues", nil, 2, false)
+	caseNameFn("Dague", &domain.Item{Nom: "Dague"}, 4, false)
+	caseNameFn("Épée", &domain.Item{Nom: "Épée"}, 6, false)
+	caseNameFn("Arc", &domain.Item{Nom: "Arc"}, 8, true)
+	caseNameFn("Arbalète", &domain.Item{Nom: "Arbalète"}, 8, true)
+	caseNameFn("Hache", &domain.Item{Nom: "Hache de Guerre"}, 6, false)
+}
+
+func TestWeaponInfoExplicitDiceOverridesName(t *testing.T) {
+	sides, ranged := weaponInfo(&domain.Item{Nom: "Dague", DesDégâts: "d10"})
+	if sides != 10 || ranged {
+		t.Errorf("weaponInfo = (%d, %v), want (10, false)", sides, ranged)
+	}
+	sides, ranged = weaponInfo(&domain.Item{Nom: "Arc Long", DesDégâts: "1d6"})
+	if sides != 6 || !ranged {
+		t.Errorf("weaponInfo = (%d, %v), want (6, true)", sides, ranged)
+	}
+	sides, ranged = weaponInfo(&domain.Item{Nom: "Marteau", DesDégâts: "bogus"})
+	if sides != 6 || ranged {
+		t.Errorf("invalid dice should fall back to name default, got (%d, %v)", sides, ranged)
 	}
 }
 
@@ -170,7 +178,7 @@ func TestResolveSpellAttackMiss(t *testing.T) {
 	attacker.Stats.Nom = "Magicien"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolveSpellAttack(attacker, target, "Boule de Feu")
+	msg := resolveSpellAttack(attacker, target, domain.Sort{Nom: "Boule de Feu"})
 	if target.CurrentPV != 50 {
 		t.Errorf("PV = %v, want 50", target.CurrentPV)
 	}
@@ -187,12 +195,149 @@ func TestResolveSpellAttackCritDoubleDamage(t *testing.T) {
 	attacker.Stats.Nom = "Magicien"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolveSpellAttack(attacker, target, "Boule de Feu")
+	msg := resolveSpellAttack(attacker, target, domain.Sort{Nom: "Boule de Feu"})
 	// normal = 24, crit = 48
 	if target.CurrentPV != 2 {
 		t.Errorf("PV = %v, want 2 (48 dmg)", target.CurrentPV)
 	}
 	failIf(t, msg, "CRITIQUE")
+}
+
+func TestResolveSpellAttackBonusAndDice(t *testing.T) {
+	oldRoll := rollD20Fn
+	oldDice := rollDiceFn
+	rollD20Fn = func() int { return 10 }
+	rollDiceFn = func(count, sides int) int { return sides * count } // max damage
+	defer func() { rollD20Fn = oldRoll; rollDiceFn = oldDice }()
+
+	// Savoir 8 → mod -1 ; bonus +4 → total 13 ≥ CA 10 (Vitesse 10) → touche
+	attacker := newTestCharacter("Magicien", domain.Stats{Savoir: 8}, 100)
+	target := newTestCharacter("Goblin", domain.Stats{Vitesse: 10}, 50)
+	attacker.Stats.Nom = "Magicien"
+	target.Stats.Nom = "Goblin"
+
+	msg := resolveSpellAttack(attacker, target, domain.Sort{
+		Nom:       "Éclair de Givre",
+		Bonus:     4,
+		DesDégâts: "d8",
+	})
+	// 1d8 max = 8
+	if target.CurrentPV != 42 {
+		t.Errorf("PV = %v, want 42 (8 dmg)", target.CurrentPV)
+	}
+	failIf(t, msg, "Touché")
+	failIf(t, msg, "[1d8")
+}
+
+func TestResolveSpellAttackDiceCritTwoDice(t *testing.T) {
+	oldRoll := rollD20Fn
+	oldDice := rollDiceFn
+	rollD20Fn = func() int { return 20 }
+	rollDiceFn = func(count, sides int) int { return sides * count } // max damage
+	defer func() { rollD20Fn = oldRoll; rollDiceFn = oldDice }()
+
+	attacker := newTestCharacter("Magicien", domain.Stats{Savoir: 10}, 100)
+	target := newTestCharacter("Goblin", domain.Stats{Vitesse: 20}, 50)
+	attacker.Stats.Nom = "Magicien"
+	target.Stats.Nom = "Goblin"
+
+	msg := resolveSpellAttack(attacker, target, domain.Sort{
+		Nom:       "Boule de Feu",
+		DesDégâts: "d6",
+	})
+	// crit → 2d6 max = 12
+	if target.CurrentPV != 38 {
+		t.Errorf("PV = %v, want 38 (12 dmg)", target.CurrentPV)
+	}
+	failIf(t, msg, "[2d6")
+}
+
+func TestApplyStatsBuff(t *testing.T) {
+	stats := domain.Stats{Force: 10, Savoir: 12}
+	ok, label := applyStatsBuff(&stats, domain.SortBuff{Stat: "force", Valeur: 5})
+	if !ok || label != "Force" || stats.Force != 15 {
+		t.Errorf("buff force = ok:%v label:%q force:%v, want ok:true label:Force force:15", ok, label, stats.Force)
+	}
+
+	ok, _ = applyStatsBuff(&stats, domain.SortBuff{Stat: "inconnu", Valeur: 5})
+	if ok {
+		t.Errorf("applyStatsBuff should reject unknown stat")
+	}
+}
+
+func TestActionCastSpellOnNPC(t *testing.T) {
+	oldRoll := rollD20Fn
+	oldDice := rollDiceFn
+	rollD20Fn = func() int { return 17 }
+	rollDiceFn = func(count, sides int) int { return sides * count } // max damage
+	defer func() { rollD20Fn = oldRoll; rollDiceFn = oldDice }()
+
+	gm := newTestGameManager(t)
+	defer gm.Close()
+
+	gm.World.Players["arya"] = &domain.Player{
+		Pseudo:     "arya",
+		Characters: []*domain.Character{newTestCharacter("Arya", domain.Stats{Savoir: 10}, 100)},
+	}
+	attacker := gm.World.Players["arya"].Characters[0]
+	attacker.Stats.Nom = "Arya"
+	attacker.Sorts = []domain.Sort{{Nom: "Boule de Feu", DesDégâts: "d6"}}
+
+	npc := gm.World.NPCs["Grum le Garde"]
+	npc.CurrentPV = 50
+	attacker.Lieu = npc.Lieu
+
+	gm.actionCastSpell(attacker, "Boule de Feu", "Grum le Garde")
+	// 1d6 max = 6 dégâts → 44
+	if npc.CurrentPV != 44 {
+		t.Errorf("PV du PNJ = %v, want 44", npc.CurrentPV)
+	}
+}
+
+func TestActionCastSpellBuffOnSelf(t *testing.T) {
+	gm := newTestGameManager(t)
+	defer gm.Close()
+
+	gm.World.Players["arya"] = &domain.Player{
+		Pseudo:     "arya",
+		Characters: []*domain.Character{newTestCharacter("Arya", domain.Stats{Nom: "Arya", Force: 10}, 100)},
+	}
+	attacker := gm.World.Players["arya"].Characters[0]
+	attacker.Sorts = []domain.Sort{{Nom: "Bénédiction", Buff: &domain.SortBuff{Stat: "Force", Valeur: 2}}}
+
+	forceBefore := attacker.Stats.Force
+	gm.actionCastSpell(attacker, "Bénédiction", "arya")
+	if attacker.Stats.Force != forceBefore+2 {
+		t.Errorf("Force = %v, want %v", attacker.Stats.Force, forceBefore+2)
+	}
+}
+
+func TestActionCastSpellNPCDeathClampedToZero(t *testing.T) {
+	oldRoll := rollD20Fn
+	oldDice := rollDiceFn
+	rollD20Fn = func() int { return 16 }
+	rollDiceFn = func(count, sides int) int { return 100 } // massive damage
+	defer func() { rollD20Fn = oldRoll; rollDiceFn = oldDice }()
+
+	gm := newTestGameManager(t)
+	defer gm.Close()
+
+	gm.World.Players["arya"] = &domain.Player{
+		Pseudo:     "arya",
+		Characters: []*domain.Character{newTestCharacter("Arya", domain.Stats{Savoir: 10}, 100)},
+	}
+	attacker := gm.World.Players["arya"].Characters[0]
+	attacker.Stats.Nom = "Arya"
+	attacker.Sorts = []domain.Sort{{Nom: "Éclair", DesDégâts: "d12"}}
+
+	npc := gm.World.NPCs["Zorra la Sorciere"]
+	npc.CurrentPV = 5
+	attacker.Lieu = npc.Lieu
+
+	gm.actionCastSpell(attacker, "Éclair", "Zorra la Sorciere")
+	if npc.CurrentPV != 0 {
+		t.Errorf("PV du PNJ = %v, want 0 (clamp)", npc.CurrentPV)
+	}
 }
 
 func failIf(t *testing.T, msg, contains string) {

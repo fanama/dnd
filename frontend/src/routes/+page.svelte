@@ -24,6 +24,10 @@
         sendAction({ type: 'attack', cible: target });
     }
 
+    function castSpell(spell, target) {
+        sendAction({ type: 'cast_spell', sort: spell, cible: target });
+    }
+
     function useItem(name) {
         sendAction({ type: 'use_consumable', item_name: name });
     }
@@ -84,6 +88,7 @@
                 gameState={$gameState}
                 onMove={move}
                 onHit={hit}
+                onCastSpell={castSpell}
                 onUseItem={useItem}
                 onLootItem={lootItem}
                 onEquip={equipItem}
