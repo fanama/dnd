@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"dnd-backend/internal/repository"
 	"dnd-backend/internal/services"
@@ -25,6 +30,7 @@ func main() {
 	defer repo.Close()
 
 	gm := services.NewGameManager(repo)
+	defer gm.Close()
 
 	http.HandleFunc("/ws/", func(w http.ResponseWriter, r *http.Request) {
 		pseudo := r.URL.Path[len("/ws/"):]
@@ -67,7 +73,23 @@ func main() {
 	})
 
 	log.Println("Server starting on :8000")
-	if err := http.ListenAndServe(":8000", nil); err != nil {
+
+	srv := &http.Server{Addr: ":8000", Handler: nil}
+	done := make(chan struct{})
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		<-sig
+		log.Println("Shutting down...")
+		gm.DisconnectAll()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(ctx)
+		close(done)
+	}()
+
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal("ListenAndServe:", err)
 	}
+	<-done
 }

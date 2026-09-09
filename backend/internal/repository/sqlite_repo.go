@@ -42,11 +42,21 @@ func createTables(db *sql.DB) error {
 	if _, err := db.Exec(query); err != nil {
 		return err
 	}
-	return ensureColumn(db, "characters", "equipement")
+	if err := ensureColumn(db, "characters", "equipement"); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS world_state (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		npcs TEXT,
+		locations TEXT
+	);`); err != nil {
+		return err
+	}
+	return nil
 }
 
 func ensureColumn(db *sql.DB, table, column string) error {
-	rows, err := db.Query(`SELECT name FROM pragma_table_info('` + table + `') WHERE name = ?`, column)
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('`+table+`') WHERE name = ?`, column)
 	if err != nil {
 		return err
 	}
@@ -106,6 +116,18 @@ func (r *SQLiteRepository) GetAllCharacters() (map[string]struct {
 		}
 	}
 	return result, nil
+}
+
+func (r *SQLiteRepository) SaveWorld(npcs, locations string) error {
+	query := `INSERT OR REPLACE INTO world_state (id, npcs, locations) VALUES (1, ?, ?)`
+	_, err := r.db.Exec(query, npcs, locations)
+	return err
+}
+
+func (r *SQLiteRepository) LoadWorld() (npcs, locations string, err error) {
+	query := `SELECT npcs, locations FROM world_state WHERE id = 1`
+	err = r.db.QueryRow(query).Scan(&npcs, &locations)
+	return
 }
 
 func (r *SQLiteRepository) Close() error {
