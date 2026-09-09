@@ -1,5 +1,6 @@
 <script>
     import HPBar from '../atoms/HPBar.svelte';
+    import { abilityModifier } from '../../stores/game';
 
     export let stats = {};
     export let derivedStats = { maxPv: 100, ac: 10, attackMod: 0, damageDice: '1d2', weaponName: 'Mains nues' };
@@ -7,13 +8,18 @@
     $: maxPv = derivedStats?.maxPv || (stats.stats?.constitution || 10) * 10;
 
     $: statList = [
-        { label: 'Force', val: stats.stats?.force, icon: '💪', desc: 'Attaque (mêlée)' },
-        { label: 'Constitution', val: stats.stats?.constitution, icon: '🫀', desc: 'PV' },
-        { label: 'Vitesse', val: stats.stats?.vitesse, icon: '👟', desc: 'CA / Attaque' },
-        { label: 'Savoir', val: stats.stats?.savoir, icon: '📚', desc: 'Arcanes' },
-        { label: 'Instinct', val: stats.stats?.instinct, icon: '👁️', desc: 'Perception' },
-        { label: 'Charisme', val: stats.stats?.charisme, icon: '✨', desc: 'Social' }
+        { label: 'Force', key: 'force', val: stats.stats?.force, icon: '💪', desc: 'Attaque (mêlée)' },
+        { label: 'Constitution', key: 'constitution', val: stats.stats?.constitution, icon: '🫀', desc: 'PV' },
+        { label: 'Vitesse', key: 'vitesse', val: stats.stats?.vitesse, icon: '👟', desc: 'CA / Attaque' },
+        { label: 'Savoir', key: 'savoir', val: stats.stats?.savoir, icon: '📚', desc: 'Arcanes' },
+        { label: 'Instinct', key: 'instinct', val: stats.stats?.instinct, icon: '👁️', desc: 'Perception' },
+        { label: 'Charisme', key: 'charisme', val: stats.stats?.charisme, icon: '✨', desc: 'Social' }
     ];
+
+    function statMod(val) {
+        const m = abilityModifier(Number(val) || 10);
+        return m > 0 ? `+${m}` : `${m}`;
+    }
 
     $: attackBonus = derivedStats?.attackMod > 0 ? `+${derivedStats.attackMod}` : `${derivedStats?.attackMod || 0}`;
 
@@ -58,7 +64,10 @@
                 <div class="stat-card">
                     <span class="stat-icon">{stat.icon}</span>
                     <span class="stat-label">{stat.label}</span>
-                    <span class="stat-value">{stat.val || 0}</span>
+                    <div class="stat-value-row">
+                        <span class="stat-value">{stat.val || 0}</span>
+                        <span class="stat-mod">{statMod(stat.val)}</span>
+                    </div>
                     <span class="stat-desc">{stat.desc}</span>
                 </div>
             {/each}
@@ -235,6 +244,25 @@
         font-weight: 700;
         color: #2c1e16;
         line-height: 1.1;
+    }
+
+    .stat-value-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .stat-mod {
+        font-family: 'Cinzel', serif;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #8b6544;
+        background: rgba(92, 64, 51, 0.12);
+        border: 1px solid rgba(92, 64, 51, 0.25);
+        border-radius: 100px;
+        padding: 1px 7px;
+        line-height: 1.2;
     }
 
     .stat-desc {

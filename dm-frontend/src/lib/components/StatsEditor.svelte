@@ -31,6 +31,11 @@
         return Math.floor(((Number(stat) || 10) - 10) / 2);
     }
 
+    function signedMod(stat) {
+        const m = mod(stat);
+        return m > 0 ? `+${m}` : `${m}`;
+    }
+
     function normalizeName(name) {
         return (name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     }
@@ -145,6 +150,7 @@
                 <label class="stat-label">
                     <span class="stat-icon">{field.icon}</span>
                     {field.label}
+                    <span class="stat-mod">{signedMod(editStats[field.key])}</span>
                 </label>
                 <input
                     class="stat-input"
@@ -303,6 +309,19 @@
         display: flex;
         align-items: center;
         gap: 4px;
+    }
+
+    .stat-mod {
+        font-family: 'Cinzel', serif;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #c5a059;
+        background: rgba(197, 160, 89, 0.1);
+        border: 1px solid rgba(197, 160, 89, 0.25);
+        border-radius: 100px;
+        padding: 0 6px;
+        margin-left: auto;
+        line-height: 1.4;
     }
 
     .stat-icon { font-size: 0.85rem; }
