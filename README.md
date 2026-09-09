@@ -327,11 +327,8 @@ classDiagram
     Character "1" *-- "1" Equipement
     Equipement o--> Item : Arme, Armure
     Character "1" *-- "*" Item : inventaire
-    Character "1" *-- "*" Sort : sorts
     Sort o--> SortBuff : buff
-    Character "1" *-- "*" Quest : quêtes
     Player "1" o-- "*" Character
-    World "1" o-- "*" Player
     World "1" o-- "*" Character : NPCs
     World "1" o-- "*" Location
     Location "1" *-- "*" Item : objects
