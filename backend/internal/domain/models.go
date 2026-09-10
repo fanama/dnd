@@ -19,8 +19,26 @@ type Stats struct {
 	Instinct     float64 `json:"instinct"`
 }
 
+func (s *Stats) HitDiceSides() int {
+	switch s.Background {
+	case "Magicien":
+		return 6
+	case "Voleur", "Clerc", "Barde", "Ranger":
+		return 8
+	default: // Guerrier
+		return 10
+	}
+}
+
 func (s *Stats) CalculateLifePoints() float64 {
-	return s.Constitution * 10.0
+	hd := float64(s.HitDiceSides())
+	conMod := AbilityModifier(s.Constitution)
+	maxRoll := hd
+ pv := maxRoll + conMod
+	if pv < 1 {
+		pv = 1
+	}
+	return pv
 }
 
 func AbilityModifier(stat float64) float64 {

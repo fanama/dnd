@@ -1,5 +1,9 @@
 import { writable } from 'svelte/store';
 
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
+export const connectionStatus = writable<ConnectionStatus>('disconnected');
+
 export interface Stats {
     nom: string;
     background: string;
@@ -78,6 +82,7 @@ interface DMState {
     locations: Location[];
     logs: string[];
     selectedPlayer: string | null;
+    latestExport: unknown;
 }
 
 export const dmState = writable<DMState>({
@@ -88,26 +93,90 @@ export const dmState = writable<DMState>({
     locations: [],
     logs: [],
     selectedPlayer: null,
+    latestExport: null,
 });
 
 let socket: WebSocket | undefined;
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let reconnectAttempts = 0;
+let intentionalClose = false;
+
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_DELAY_MS = 1000;
+const MAX_DELAY_MS = 30000;
+
+let savedPseudo = '';
 
 function wsUrl(pseudo: string): string {
     const configured = import.meta.env.VITE_WS_URL as string | undefined;
     if (configured) return `${configured.replace(/\/$/, '')}/${pseudo}`;
     if (import.meta.env.PROD) {
         const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        return `${scheme}://${window.location.hostname}/ws/${pseudo}`;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        return `${scheme}://${window.location.hostname}${port}/ws/${pseudo}`;
     }
     return `ws://${window.location.hostname}:8000/ws/${pseudo}`;
 }
 
-export function dmConnect(pseudo: string): void {
-    if (socket) socket.close();
+function clearReconnectTimer(): void {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+    }
+}
+
+function scheduleReconnect(): void {
+    clearReconnectTimer();
+
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        connectionStatus.set('disconnected');
+        return;
+    }
+
+    connectionStatus.set('reconnecting');
+
+    const delay = Math.min(BASE_DELAY_MS * Math.pow(2, reconnectAttempts), MAX_DELAY_MS);
+    reconnectAttempts++;
+
+    reconnectTimer = setTimeout(() => {
+        openSocket(savedPseudo, true);
+    }, delay);
+}
+
+function handleMessage(event: MessageEvent): void {
+    const data = JSON.parse(event.data);
+    if (data.type === 'chat') {
+        dmState.update(s => ({ ...s, logs: [...s.logs, data.msg] }));
+    } else if (data.type === 'sync') {
+        dmState.update(s => ({
+            ...s,
+            players: data.liste || {},
+            npcs: data.npcs || {},
+            locations: data.locations || s.locations,
+        }));
+    } else if (data.type === 'state_export') {
+        dmState.update(s => ({ ...s, latestExport: data.payload }));
+    }
+}
+
+function openSocket(pseudo: string, isReconnect: boolean): void {
+    if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+            socket.close();
+        }
+    }
+
+    connectionStatus.set(isReconnect ? 'reconnecting' : 'connecting');
 
     socket = new WebSocket(wsUrl(pseudo));
 
     socket.onopen = () => {
+        reconnectAttempts = 0;
+        connectionStatus.set('connected');
         dmState.update(s => ({ ...s, me: pseudo, connected: true }));
         socket!.send(JSON.stringify({
             type: 'init',
@@ -117,22 +186,44 @@ export function dmConnect(pseudo: string): void {
     };
 
     socket.onmessage = (event: MessageEvent) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'chat') {
-            dmState.update(s => ({ ...s, logs: [...s.logs, data.msg] }));
-        } else if (data.type === 'sync') {
-            dmState.update(s => ({
-                ...s,
-                players: data.liste || {},
-                npcs: data.npcs || {},
-                locations: data.locations || s.locations,
-            }));
-        }
+        handleMessage(event);
     };
 
     socket.onclose = () => {
-        dmState.update(s => ({ ...s, me: null, connected: false }));
+        if (intentionalClose) {
+            connectionStatus.set('disconnected');
+            return;
+        }
+        scheduleReconnect();
     };
+
+    socket.onerror = () => {
+        // onclose will fire after onerror, which triggers reconnection
+    };
+}
+
+export function dmConnect(pseudo: string): void {
+    intentionalClose = false;
+    clearReconnectTimer();
+    reconnectAttempts = 0;
+    savedPseudo = pseudo;
+    openSocket(pseudo, false);
+}
+
+export function dmDisconnect(): void {
+    intentionalClose = true;
+    clearReconnectTimer();
+    reconnectAttempts = 0;
+    if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.close();
+        socket = undefined;
+    }
+    connectionStatus.set('disconnected');
+    dmState.update(s => ({ ...s, me: null, connected: false }));
 }
 
 export function dmSend(action: Record<string, unknown>): void {
@@ -143,4 +234,12 @@ export function dmSend(action: Record<string, unknown>): void {
 
 export function selectPlayer(pseudo: string | null): void {
     dmState.update(s => ({ ...s, selectedPlayer: pseudo }));
+}
+
+export function dmRequestExport(): void {
+    dmSend({ type: 'dm_export_state' });
+}
+
+export function dmLoadStateFromJson(json: string): void {
+    dmSend({ type: 'dm_load_state', payload: json });
 }

@@ -35,6 +35,8 @@ type Action struct {
 	Quest        domain.Quest `json:"quest,omitempty"`
 	QuestName    string       `json:"quest_name,omitempty"`
 	QuestIndex   int          `json:"quest_index,omitempty"`
+	Payload      string       `json:"payload,omitempty"`
+	Pseudo       string       `json:"-"`
 }
 
 type GameManager struct {
@@ -121,100 +123,13 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 		player.Characters = append(player.Characters, char)
 		gm.chat("👋 %s est revenu dans le monde !", pseudo)
 	} else {
-		// 2. New character creation
-		charName := charInfo["nom_personnage"]
-		charClass := charInfo["classe"]
-
-		stats := domain.Stats{Nom: charName, Background: charClass}
-		switch charClass {
-		case "Magicien":
-			stats.Force = 8
-			stats.Constitution = 9
-			stats.Vitesse = 11
-			stats.Charisme = 12
-			stats.Instinct = 14
-			stats.Savoir = 16
-		case "Voleur":
-			stats.Force = 10
-			stats.Constitution = 8
-			stats.Vitesse = 16
-			stats.Charisme = 10
-			stats.Instinct = 15
-			stats.Savoir = 11
-		case "Clerc":
-			stats.Force = 12
-			stats.Constitution = 14
-			stats.Vitesse = 8
-			stats.Charisme = 15
-			stats.Instinct = 9
-			stats.Savoir = 12
-		case "Barde":
-			stats.Force = 9
-			stats.Constitution = 10
-			stats.Vitesse = 13
-			stats.Charisme = 16
-			stats.Instinct = 12
-			stats.Savoir = 10
-		case "Ranger":
-			stats.Force = 13
-			stats.Constitution = 11
-			stats.Vitesse = 14
-			stats.Charisme = 8
-			stats.Instinct = 15
-			stats.Savoir = 9
-		default: // Guerrier
-			stats.Force = 15
-			stats.Constitution = 12
-			stats.Vitesse = 10
-			stats.Charisme = 10
-			stats.Instinct = 10
-			stats.Savoir = 10
-		}
-
-		char := &domain.Character{
-			ID:         uuid.New(),
-			Alignement: "Neutre",
-			Stats:      stats,
-			CurrentPV:  stats.CalculateLifePoints(),
-			Lieu:       "Taverne",
-		}
-
-		switch charClass {
-		case "Magicien":
-			char.Sorts = append(char.Sorts, domain.Sort{Nom: "Boule de Feu", EcoleMagie: "Évocations"})
-		case "Clerc":
-			char.Sorts = append(char.Sorts, domain.Sort{Nom: "Soin Divin", EcoleMagie: "Guérison"})
-		case "Barde":
-			char.Sorts = append(char.Sorts, domain.Sort{Nom: "Mélodie Envoûtante", EcoleMagie: "Enchantement"})
-		}
-
-		switch charClass {
-		case "Guerrier":
-			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Épée Longue", IsConsumable: false, BonusDégâts: 5, Prix: 100})
-		case "Magicien":
-			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Bâton Mystique", IsConsumable: false, BonusDégâts: 3, Prix: 80})
-		case "Voleur":
-			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Dague Empoisonnée", IsConsumable: false, BonusDégâts: 4, Prix: 90})
-		case "Clerc":
-			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Marteau Sacré", IsConsumable: false, BonusDégâts: 4, Prix: 95})
-		case "Barde":
-			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Luth Enchanté", IsConsumable: false, BonusDégâts: 2, Prix: 70})
-		case "Ranger":
-			char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Arc Long", IsConsumable: false, BonusDégâts: 5, Prix: 100})
-		}
-		char.Inventaire = append(char.Inventaire, domain.Item{Nom: "Potion de Soin", IsConsumable: true, Prix: 25})
-
-		for _, it := range char.Inventaire {
-			if !it.IsConsumable && it.BonusDégâts > 0 {
-				equipped := it
-				char.Equipement.Arme = &equipped
-				break
-			}
-		}
-
+		// 2. New character creation: build a temporary adventurer, then let
+		// the client run the onboarding wizard to finalize class and stats.
+		char := buildCharacter(charInfo["classe"], charInfo["nom_personnage"])
 		player.Characters = append(player.Characters, char)
 		gm.saveCharacterState(pseudo, char)
-		gm.chat("⚔️ %s a incarné %s (%s) !", pseudo, charName, charClass)
+		gm.sendTo(pseudo, map[string]interface{}{"type": "init_new_char"})
+		gm.chat("🆕 %s arrive en quête d'un destin...", pseudo)
 	}
 	gm.NotifyChange()
 }
@@ -222,6 +137,8 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 func (gm *GameManager) HandleAction(pseudo string, action Action) {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
+
+	action.Pseudo = pseudo
 
 	// DM actions are routed to the DM handler registry.
 	if gm.DMs[pseudo] {

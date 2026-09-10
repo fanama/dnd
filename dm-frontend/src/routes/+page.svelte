@@ -1,6 +1,6 @@
 <script>
     import '../app.css';
-    import { dmState, dmConnect, dmSend, selectPlayer } from '../lib/stores/dm';
+    import { dmState, dmConnect, dmSend, selectPlayer, dmRequestExport, dmLoadStateFromJson, connectionStatus } from '../lib/stores/dm';
     import PlayerCard from '../lib/components/PlayerCard.svelte';
     import StatsEditor from '../lib/components/StatsEditor.svelte';
     import InventoryEditor from '../lib/components/InventoryEditor.svelte';
@@ -75,6 +75,27 @@
     $: selectedData = selected ? ($dmState.players[selected] || $dmState.npcs[selected]) : null;
     $: selectedIsNpc = selected ? !!($dmState.npcs[selected]) : false;
     $: playerList = Object.entries($dmState.players).filter(([, v]) => !v.role);
+    $: connStatus = $connectionStatus;
+
+    let saveFileInput;
+    function onLoadSaveFile(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => dmLoadStateFromJson(String(reader.result));
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+
+    $: if ($dmState.latestExport) {
+        const blob = new Blob([JSON.stringify($dmState.latestExport, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dnd-save-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
 </script>
 
 <svelte:head>
@@ -117,6 +138,10 @@
                     </div>
                 </div>
                 <div class="header-right">
+                    <div class="connection-indicator" class:connected={connStatus === 'connected'} class:reconnecting={connStatus === 'reconnecting'} class:disconnected={connStatus === 'disconnected'} class:connecting={connStatus === 'connecting'}>
+                        <span class="conn-dot"></span>
+                        <span class="conn-label">{connStatus === 'connected' ? 'Connecté' : connStatus === 'reconnecting' ? 'Reconnexion...' : connStatus === 'connecting' ? 'Connexion...' : 'Déconnecté'}</span>
+                    </div>
                     <span class="dm-badge">MDJ</span>
                     <span class="dm-pseudo">{$dmState.me}</span>
                 </div>
@@ -283,6 +308,16 @@
                         selectNpc={(name) => selectPlayer(name)}
                     />
 
+                    <div class="dnd-section save-section">
+                        <h2 class="panel-title"><span>💾</span> Sauvegarde</h2>
+                        <p class="save-hint">Téléchargez l'état complet de la partie ou restaurez une sauvegarde.</p>
+                        <div class="save-row">
+                            <button class="btn-save" on:click={dmRequestExport}>⬇️ Télécharger</button>
+                            <button class="btn-load" on:click={() => saveFileInput.click()}>⬆️ Charger…</button>
+                            <input bind:this={saveFileInput} type="file" accept="application/json,.json" hidden on:change={onLoadSaveFile} />
+                        </div>
+                    </div>
+
                     <ChatBox logs={$dmState.logs} />
                 </aside>
             </div>
@@ -400,6 +435,54 @@
         background: rgba(185, 28, 28, 0.4);
     }
 
+    .save-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .save-hint {
+        font-size: 0.8rem;
+        color: #a89a7b;
+        margin: 0;
+    }
+
+    .save-row {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-save,
+    .btn-load {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.82rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-save {
+        background: rgba(197, 160, 89, 0.18);
+        border: 1px solid rgba(197, 160, 89, 0.4);
+        color: #e5c98c;
+    }
+
+    .btn-load {
+        background: rgba(59, 130, 246, 0.16);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        color: #9ac0ff;
+    }
+
+    .btn-save:hover {
+        background: rgba(197, 160, 89, 0.35);
+    }
+
+    .btn-load:hover {
+        background: rgba(59, 130, 246, 0.3);
+    }
+
     /* Dashboard Layout */
     .dm-layout {
         min-height: 100vh;
@@ -463,6 +546,68 @@
         font-family: 'MedievalSharp', cursive;
         color: #7a6f5f;
         font-size: 0.9rem;
+    }
+
+    /* Connection Indicator */
+    .connection-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 100px;
+        border: 1px solid rgba(197, 160, 89, 0.15);
+    }
+
+    .conn-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #5a5045;
+        transition: background 0.3s ease;
+    }
+
+    .connection-indicator.connected .conn-dot {
+        background: #22c55e;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    }
+
+    .connection-indicator.reconnecting .conn-dot {
+        background: #f59e0b;
+        animation: pulse-dot 1.2s ease-in-out infinite;
+    }
+
+    .connection-indicator.connecting .conn-dot {
+        background: #3b82f6;
+        animation: pulse-dot 1.2s ease-in-out infinite;
+    }
+
+    .connection-indicator.disconnected .conn-dot {
+        background: #ef4444;
+    }
+
+    .conn-label {
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.7rem;
+        color: #7a6f5f;
+        white-space: nowrap;
+    }
+
+    .connection-indicator.connected .conn-label {
+        color: #22c55e;
+    }
+
+    .connection-indicator.reconnecting .conn-label {
+        color: #f59e0b;
+    }
+
+    .connection-indicator.disconnected .conn-label {
+        color: #ef4444;
+    }
+
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
     }
 
     .dm-content {

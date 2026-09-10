@@ -76,6 +76,7 @@ export interface GameState {
     currentLocationObjects: Item[];
     currentLocationQuests: Quest[];
     locations: Location[];
+    newChar: boolean;
 }
 
 export interface SyncData {
@@ -144,11 +145,25 @@ export interface DerivedStats {
     ranged: boolean;
 }
 
+function hitDiceSides(classe: string): number {
+    switch (classe) {
+        case 'Magicien': return 6;
+        case 'Voleur':
+        case 'Clerc':
+        case 'Barde':
+        case 'Ranger': return 8;
+        default: return 10; // Guerrier
+    }
+}
+
 export function getDerivedStats(s: PlayerStats | undefined): DerivedStats {
     if (!s || !s.stats) {
-        return { maxPv: 100, ac: 10, attackMod: 0, damageMod: 0, damageDice: '1d2', weaponName: 'Mains nues', ranged: false };
+        return { maxPv: 10, ac: 10, attackMod: 0, damageMod: 0, damageDice: '1d2', weaponName: 'Mains nues', ranged: false };
     }
-    const maxPv = Math.floor((s.stats.constitution || 10) * 10);
+    const con = s.stats.constitution || 10;
+    const conMod = abilityModifier(con);
+    const hd = hitDiceSides(s.classe || 'Guerrier');
+    const maxPv = Math.max(1, hd + conMod);
     const weapon = s.equipement?.arme || null;
     const armor = s.equipement?.armure || null;
     const weaponInfo = getWeaponInfo(weapon);
@@ -175,6 +190,10 @@ export function getItemCategory(item: Item | string): 'weapon' | 'armor' | 'cons
     return 'misc';
 }
 
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
+export const connectionStatus = writable<ConnectionStatus>('disconnected');
+
 export const gameState = writable<GameState>({
     me: null,
     location: 'En Voyage...',
@@ -183,7 +202,8 @@ export const gameState = writable<GameState>({
     logs: [],
     currentLocationObjects: [],
     currentLocationQuests: [],
-    locations: []
+    locations: [],
+    newChar: false
 });
 
 export const myStats = derived(gameState, ($gs) => {
@@ -195,25 +215,136 @@ export const myDerivedStats = derived(myStats, ($ms) => {
 });
 
 let socket: WebSocket | undefined;
+let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+let reconnectAttempts = 0;
+let intentionalClose = false;
+
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_DELAY_MS = 1000;
+const MAX_DELAY_MS = 30000;
+
+let savedPseudo = '';
+let savedCharName = '';
+let savedCharClass = '';
+
+const SESSION_KEY = 'dnd_session';
+
+function persistSession(): void {
+    try {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+            pseudo: savedPseudo,
+            charName: savedCharName,
+            charClass: savedCharClass,
+        }));
+    } catch {}
+}
+
+function restoreSession(): { pseudo: string; charName: string; charClass: string } | null {
+    try {
+        const raw = sessionStorage.getItem(SESSION_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (data?.pseudo && data?.charName && data?.charClass) return data;
+    } catch {}
+    return null;
+}
+
+function clearSession(): void {
+    try {
+        sessionStorage.removeItem(SESSION_KEY);
+    } catch {}
+}
 
 function wsUrl(pseudo: string): string {
     const configured = import.meta.env.VITE_WS_URL as string | undefined;
     if (configured) return `${configured.replace(/\/$/, '')}/${pseudo}`;
     if (import.meta.env.PROD) {
         const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        return `${scheme}://${window.location.hostname}/ws/${pseudo}`;
+        const port = window.location.port ? `:${window.location.port}` : '';
+        return `${scheme}://${window.location.hostname}${port}/ws/${pseudo}`;
     }
     return `ws://${window.location.hostname}:8000/ws/${pseudo}`;
 }
 
-export function connect(pseudo: string, charName: string, charClass: string): void {
-    if (socket) {
-        socket.close();
+function clearReconnectTimer(): void {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
     }
+}
+
+function scheduleReconnect(): void {
+    clearReconnectTimer();
+
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        connectionStatus.set('disconnected');
+        return;
+    }
+
+    connectionStatus.set('reconnecting');
+
+    const delay = Math.min(BASE_DELAY_MS * Math.pow(2, reconnectAttempts), MAX_DELAY_MS);
+    reconnectAttempts++;
+
+    reconnectTimer = setTimeout(() => {
+        openSocket(savedPseudo, savedCharName, savedCharClass, true);
+    }, delay);
+}
+
+function handleMessage(pseudo: string, event: MessageEvent): void {
+    const data: SyncData | ChatData | any = JSON.parse(event.data);
+    if (data.type === 'chat') {
+        gameState.update(s => ({ ...s, logs: [...s.logs, data.msg] }));
+    } else if (data.type === 'init_new_char') {
+        gameState.update(s => ({ ...s, newChar: true }));
+    } else if (data.type === 'sync') {
+        gameState.update(s => {
+            const myStats = data.liste[pseudo];
+
+            let currentLocationObjects: Item[] = [];
+            let currentLocationQuests: Quest[] = [];
+            if (data.locations) {
+                const loc = data.locations.find(l => l.nom === (myStats ? myStats.lieu : s.location));
+                if (loc) {
+                    currentLocationObjects = loc.objects;
+                    currentLocationQuests = loc.quests || [];
+                }
+            }
+
+            const npcList = data.npcs ? Object.values(data.npcs) : [];
+            const currentNpcs = npcList.filter((n: any) => n.lieu === (myStats ? myStats.lieu : s.location));
+
+            return {
+                ...s,
+                players: data.liste,
+                npcs: currentNpcs,
+                location: myStats ? myStats.lieu : s.location,
+                currentLocationObjects: currentLocationObjects,
+                currentLocationQuests: currentLocationQuests,
+                locations: data.locations || s.locations
+            };
+        });
+    }
+}
+
+function openSocket(pseudo: string, charName: string, charClass: string, isReconnect: boolean): void {
+    if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+            socket.close();
+        }
+    }
+
+    connectionStatus.set(isReconnect ? 'reconnecting' : 'connecting');
 
     socket = new WebSocket(wsUrl(pseudo));
 
     socket.onopen = () => {
+        reconnectAttempts = 0;
+        connectionStatus.set('connected');
         gameState.update(s => ({ ...s, me: pseudo }));
         socket!.send(JSON.stringify({
             type: 'init',
@@ -223,42 +354,66 @@ export function connect(pseudo: string, charName: string, charClass: string): vo
     };
 
     socket.onmessage = (event: MessageEvent) => {
-        const data: SyncData | ChatData = JSON.parse(event.data);
-        if (data.type === 'chat') {
-            gameState.update(s => ({ ...s, logs: [...s.logs, data.msg] }));
-        } else if (data.type === 'sync') {
-            gameState.update(s => {
-                const myStats = data.liste[pseudo];
-
-                let currentLocationObjects: Item[] = [];
-                let currentLocationQuests: Quest[] = [];
-                if (data.locations) {
-                    const loc = data.locations.find(l => l.nom === (myStats ? myStats.lieu : s.location));
-                    if (loc) {
-                        currentLocationObjects = loc.objects;
-                        currentLocationQuests = loc.quests || [];
-                    }
-                }
-
-                const npcList = data.npcs ? Object.values(data.npcs) : [];
-                const currentNpcs = npcList.filter((n: any) => n.lieu === (myStats ? myStats.lieu : s.location));
-
-                return {
-                    ...s,
-                    players: data.liste,
-                    npcs: currentNpcs,
-                    location: myStats ? myStats.lieu : s.location,
-                    currentLocationObjects: currentLocationObjects,
-                    currentLocationQuests: currentLocationQuests,
-                    locations: data.locations || s.locations
-                };
-            });
-        }
+        handleMessage(pseudo, event);
     };
 
     socket.onclose = () => {
-        gameState.update(s => ({ ...s, me: null }));
+        if (intentionalClose) {
+            connectionStatus.set('disconnected');
+            return;
+        }
+        scheduleReconnect();
     };
+
+    socket.onerror = () => {
+        // onclose will fire after onerror, which triggers reconnection
+    };
+}
+
+export function connect(pseudo: string, charName: string, charClass: string): void {
+    intentionalClose = false;
+    clearReconnectTimer();
+    reconnectAttempts = 0;
+    savedPseudo = pseudo;
+    savedCharName = charName;
+    savedCharClass = charClass;
+    persistSession();
+    openSocket(pseudo, charName, charClass, false);
+}
+
+export function tryRestoreSession(): boolean {
+    const session = restoreSession();
+    if (!session) return false;
+    intentionalClose = false;
+    clearReconnectTimer();
+    reconnectAttempts = 0;
+    savedPseudo = session.pseudo;
+    savedCharName = session.charName;
+    savedCharClass = session.charClass;
+    openSocket(session.pseudo, session.charName, session.charClass, false);
+    return true;
+}
+
+export function disconnect(): void {
+    intentionalClose = true;
+    clearReconnectTimer();
+    reconnectAttempts = 0;
+    clearSession();
+    if (socket) {
+        socket.onopen = null;
+        socket.onmessage = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.close();
+        socket = undefined;
+    }
+    connectionStatus.set('disconnected');
+    gameState.update(s => ({ ...s, me: null }));
+}
+
+export function finalizeCharacter(stats: Record<string, unknown>): void {
+    sendAction({ type: 'create_character', stats });
+    gameState.update(s => ({ ...s, newChar: false }));
 }
 
 export function sendAction(action: Record<string, unknown>): void {

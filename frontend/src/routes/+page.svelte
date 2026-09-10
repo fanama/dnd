@@ -1,18 +1,32 @@
 <script>
     import '../app.css';
-    import { gameState, connect, sendAction } from '../lib/stores/game';
+    import { onMount } from 'svelte';
+    import { gameState, connect, sendAction, finalizeCharacter, tryRestoreSession, connectionStatus } from '../lib/stores/game';
     import LoginPage from '../lib/components/organisms/pages/LoginPage.svelte';
+    import Onboarding from '../lib/components/organisms/Onboarding.svelte';
     import GamePage from '../lib/components/organisms/pages/GamePage.svelte';
 
     let pseudo = '';
-    let charName = '';
-    let charClass = 'Guerrier';
     let connectionError = '';
+    let restoring = true;
+
+    onMount(() => {
+        if (!tryRestoreSession()) {
+            restoring = false;
+            return;
+        }
+        const unsub = connectionStatus.subscribe((status) => {
+            if (status === 'connected' || status === 'disconnected') {
+                restoring = false;
+                unsub();
+            }
+        });
+    });
 
     function join() {
-        if (pseudo.trim() && charName.trim()) {
+        if (pseudo.trim()) {
             connectionError = '';
-            connect(pseudo.trim(), charName.trim(), charClass);
+            connect(pseudo.trim(), pseudo.trim(), 'Guerrier');
         }
     }
 
@@ -59,7 +73,17 @@
 </svelte:head>
 
 <main class="app-root">
-    {#if !$gameState.me}
+    {#if restoring && !$gameState.me}
+        <div class="login-view">
+            <div class="login-branding">
+                <h1 class="brand-title">
+                    <span class="brand-icon">⚔️</span>
+                    Table de Jeu
+                </h1>
+                <p class="brand-subtitle">Reconnexion en cours...</p>
+            </div>
+        </div>
+    {:else if !$gameState.me}
         <div class="login-view slide-up">
             <div class="login-branding">
                 <h1 class="brand-title">
@@ -71,8 +95,6 @@
 
             <LoginPage
                 bind:pseudo
-                bind:charName
-                bind:charClass
                 onJoin={join}
             />
 
@@ -83,20 +105,24 @@
             {/if}
         </div>
     {:else}
-        <div class="game-view">
-            <GamePage
-                gameState={$gameState}
-                onMove={move}
-                onHit={hit}
-                onCastSpell={castSpell}
-                onUseItem={useItem}
-                onLootItem={lootItem}
-                onEquip={equipItem}
-                onUnequip={unequipItem}
-                onAcceptQuest={acceptQuest}
-                onCompleteQuest={completeQuest}
-            />
-        </div>
+        {#if $gameState.newChar}
+            <Onboarding pseudo={$gameState.me || ''} onFinalize={finalizeCharacter} />
+        {:else}
+            <div class="game-view">
+                <GamePage
+                    gameState={$gameState}
+                    onMove={move}
+                    onHit={hit}
+                    onCastSpell={castSpell}
+                    onUseItem={useItem}
+                    onLootItem={lootItem}
+                    onEquip={equipItem}
+                    onUnequip={unequipItem}
+                    onAcceptQuest={acceptQuest}
+                    onCompleteQuest={completeQuest}
+                />
+            </div>
+        {/if}
     {/if}
 </main>
 

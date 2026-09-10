@@ -344,33 +344,33 @@ func TestDmAddMobSpawnsBossAndMinions(t *testing.T) {
 	gm := newTestGameManager(t)
 	defer gm.Close()
 
-	// Boss: never duplicated, default preset stats + 300 PV.
+	// Boss: never duplicated, default preset stats + 30 PV.
 	gm.dmAddNPC("Roi Goblin", "Donjon", 0, "", domain.Stats{}, "boss", 3)
 	boss, ok := gm.World.NPCs["Roi Goblin"]
 	if !ok {
 		t.Fatalf("boss was not created")
 	}
-	if boss.MobType != "boss" || boss.Stats.Force != 18 || boss.CurrentPV != 300 {
-		t.Errorf("boss = mobType:%q force:%v pv:%v, want mobType:boss force:18 pv:300", boss.MobType, boss.Stats.Force, boss.CurrentPV)
+	if boss.MobType != "boss" || boss.Stats.Force != 18 || boss.CurrentPV != 30 {
+		t.Errorf("boss = mobType:%q force:%v pv:%v, want mobType:boss force:18 pv:30", boss.MobType, boss.Stats.Force, boss.CurrentPV)
 	}
 
-	// Minions: 3 copies with suffixed names, default preset stats + 50 PV.
+	// Minions: 3 copies with suffixed names, default preset stats + 8 PV.
 	gm.dmAddNPC("Goblin", "Donjon", 0, "", domain.Stats{}, "minion", 3)
 	for _, name := range []string{"Goblin #1", "Goblin #2", "Goblin #3"} {
 		npc, ok := gm.World.NPCs[name]
 		if !ok {
 			t.Fatalf("minion %q was not created", name)
 		}
-		if npc.MobType != "minion" || npc.CurrentPV != 50 {
-			t.Errorf("%s = mobType:%q pv:%v, want mobType:minion pv:50", name, npc.MobType, npc.CurrentPV)
+		if npc.MobType != "minion" || npc.CurrentPV != 8 {
+			t.Errorf("%s = mobType:%q pv:%v, want mobType:minion pv:8", name, npc.MobType, npc.CurrentPV)
 		}
 	}
 
-	// Regular PNJ keeps its previous behavior (Constitution * 10 PV, no mob type).
+	// Regular PNJ keeps its previous behavior (D&D HD formula PV, no mob type).
 	gm.dmAddNPC("Boby", "Taverne", 0, "", domain.Stats{}, "", 1)
 	pnj := gm.World.NPCs["Boby"]
-	if pnj == nil || pnj.MobType != "" || pnj.CurrentPV != 100 {
-		t.Errorf("PNJ Boby = %+v, want mobType empty and 100 PV", pnj)
+	if pnj == nil || pnj.MobType != "" || pnj.CurrentPV != 10 {
+		t.Errorf("PNJ Boby = %+v, want mobType empty and 10 PV (d10 + CON mod)", pnj)
 	}
 }
 

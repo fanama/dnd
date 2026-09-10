@@ -145,7 +145,7 @@
     <div class="loc-list custom-scrollbar">
         {#each locations as loc}
             <div class="loc-card">
-                <button class="loc-header" on:click={() => toggle(loc.nom)}>
+                <button class="loc-header" on:click={() => expandedLoc = expandedLoc === loc.nom ? null : loc.nom}>
                     <span class="loc-icon">{locIcon(loc.nom)}</span>
                     <div class="loc-info">
                         <span class="loc-name">{loc.nom}</span>

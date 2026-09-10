@@ -21,6 +21,9 @@ func (gm *GameManager) registerActions() {
 		"unequip_item":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionUnequip(c, a.Slot) },
 		"accept_quest":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionAcceptQuest(c, a.QuestName) },
 		"complete_quest": func(gm *GameManager, c *domain.Character, a Action) { gm.actionCompleteQuest(c, a.QuestName) },
+		"create_character": func(gm *GameManager, c *domain.Character, a Action) {
+			gm.createCharacter(c, a)
+		},
 	}
 
 	gm.dmActions = map[string]dmActionFn{
@@ -50,6 +53,12 @@ func (gm *GameManager) registerActions() {
 		"dm_add_quest":        func(gm *GameManager, a Action) { gm.dmAddQuest(a.Destination, a.Quest) },
 		"dm_remove_quest":     func(gm *GameManager, a Action) { gm.dmRemoveQuest(a.Destination, a.QuestIndex) },
 		"dm_edit_quest":       func(gm *GameManager, a Action) { gm.dmEditQuest(a.Destination, a.QuestIndex, a.Quest) },
+		"dm_export_state": func(gm *GameManager, a Action) {
+			gm.dmExportState(a.Pseudo)
+		},
+		"dm_load_state": func(gm *GameManager, a Action) {
+			gm.dmLoadState(a.Payload)
+		},
 		"dm_add_quest_player": func(gm *GameManager, a Action) { gm.dmAddPlayerQuest(a.TargetPlayer, a.Quest) },
 		"dm_edit_quest_player": func(gm *GameManager, a Action) {
 			gm.dmEditPlayerQuest(a.TargetPlayer, a.QuestIndex, a.Quest)

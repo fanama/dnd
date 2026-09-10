@@ -202,9 +202,9 @@ func mobPresetStats(mobType string) domain.Stats {
 func mobPresetPV(mobType string) float64 {
 	switch mobType {
 	case "boss":
-		return 300
+		return 30
 	case "minion":
-		return 50
+		return 8
 	default:
 		return 0 // 0 → derive from Constitution
 	}

@@ -185,18 +185,19 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 
 ## Game Engine Rules
 
-* **Max HP**: Constitution x 10.0
+* **Max HP**: `max(Dé de Vie) + modificateur(Constitution)` — Dés de Vie par classe : Guerrier d10, Clerc/Barde/Voleur/Ranger d8, Magicien d6. Minimum 1 PV
 * **Modifier**: floor((stat - 10) / 2) — e.g. stat 10 → +0, 12 → +1, 18 → +4
 * **AC (Classe d'Armure)**: 10 + mod(Vitesse) + BonusArmure (armure équipée)
 * **Jet d'attaque (arme)**: 1d20 + mod(Force) [mêlée] ou mod(Vitesse) [à distance] + BonusDégâts (bonus magique de l'arme) ≥ CA
 * **Jet d'attaque (sort)**: 1d20 + mod(Savoir) + BonusSort ≥ CA
 * **Dégâts physiques**: dé d'arme + mod (min 1) — mains nues `1d2`, Dague `1d4`, Épée `1d6`, Arc / Arbalète `1d8`, autre arme `1d6` ; si l'arme a un `DesDégâts` explicite (choisi par le DM), il remplace le dé déduit du nom
 * **Dégâts magiques**: par défaut `Savoir × 1.5` ; si le sort a un `DesDégâts` (choisi par le DM), les dégâts deviennent le lancer du dé (`1dX`)
+* **Potion de soin**: `2d4 + mod(Constitution)` PV récupérés, plafonnés au max HP
 * **Sorts de buff**: un sort avec un `Buff` (stat + valeur) n'attaque pas : il applique le bonus aux stats de la cible de façon permanente (Force, Constitution, Vitesse, Charisme, Savoir ou Instinct — CA et PV max suivent automatiquement)
 * **Résultats critiques**: 20 naturel = coup critique (toujours touche, dés dédoublés — `2dX` physiques, et en magie `2dX` si le sort a un dé, sinon jets de Savoir doublés, soit `Savoir × 3` au total) ; 1 naturel = raté (fumble)
 * **Combat**: touche si 20 naturel ou jet ≥ CA
 * **Cibles des sorts**: un héros du même lieu (`cible` = pseudo), un PNJ/MOB du même lieu (`cible` = nom du PNJ/MOB), ou soi-même (`cible` = son propre pseudo) ; un PNJ/MOB réduit à 0 PV est mis à terre (reste à 0 jusqu'à ce que le MDJ le ranime)
-* **MOB (boss & minions)**: le MDJ peut spawner des monstres « à la volée » via `dm_add_npc` avec `mob_type` (`boss` ou `minion`) — un boss spawn en unité unique (300 PV par défaut, stats Force 18 / Constitution 16...), les minions en `count` exemplaires nommés `Nom #N` (50 PV par défaut) ; le MDJ peut surcharger stats et PV à la création. Les stats/PV par défaut sont utilisés si rien n'est fourni
+* **MOB (boss & minions)**: le MDJ peut spawner des monstres « à la volée » via `dm_add_npc` avec `mob_type` (`boss` ou `minion`) — un boss spawn en unité unique (30 PV par défaut, stats Force 18 / Constitution 16...), les minions en `count` exemplaires nommés `Nom #N` (8 PV par défaut) ; le MDJ peut surcharger stats et PV à la création. Les stats/PV par défaut sont utilisés si rien n'est fourni. Un PNJ créé sans PV explicite utilise la formule D&D standard (Dé de Vie + mod CON)
 * **Attaque physique sur MOB**: l'action `attack` cible un autre héros, un PNJ **ou un MOB** du même lieu (même formule arme/mêlée/à distance)
 * **Butin à la mort**: quand un MOB (ou PNJ) tombe à 0 PV, son inventaire est déposé au sol du lieu (objet récupérable par les héros via `loot`)
 * **Équipement**: actions `equip_item` / `unequip_item` (slots `weapon`/`armor`) gérées par le serveur et persistées en base ; le personnage démarre avec son arme de classe équipée
@@ -211,6 +212,7 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 
 ### Player Frontend
 * **HP Bar**: Videogame-style health bar with instant green fill, red damage trail that catches up slowly, and a red flash on hit. Pulses red when health drops below 25%.
+* **WebSocket Reconnection**: Automatic reconnection with exponential backoff (1s → 2s → 4s → ... → 30s max, 10 attempts). The connection status indicator (green dot = connected, yellow pulse = reconnecting, red = disconnected) is displayed in the header. On reconnect, the character state is automatically restored from the SQLite database by the backend.
 * **Atomic Design**: Component architecture split into Atoms (Button, HPBar, Input, StatLabel), Molecules (CharacterSheet, InventoryItem, LootItem), and Organisms (ChatBox, LocationExplorer, LoginPage, GamePage).
 * **Responsive Layout**: Sticky sidebar on desktop, tab-based navigation on mobile.
 * **Chat Log**: Parchment-styled event journal with numbered entries and auto-scroll.
@@ -223,6 +225,7 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 ### Dungeon Master Panel
 * **Roster**: All connected adventurers with live HP and location, click to edit.
 * **Full Character Editor**: Stats, HP, alignment, location teleport, inventory, spells.
+* **WebSocket Reconnection**: Same automatic reconnection as the player frontend, with a connection status indicator in the header.
 * **Item Editor (type + dés)**: Adding an item to any inventory (character, NPC, or location) lets the DM choose its type — ⚔️ arme (ATK bonus + damage dice `1d4…1d20`), 🛡️ armure (DEF bonus) or 📦 objet (consumable) — no more free-form ATK/DEF fields.
 * **Spell Editor (bonus + dés + buff)**: When adding a spell the DM can set a magic attack bonus (`1d20 + mod(Savoir) + bonus`), a damage dice replacing `Savoir × 1.5`, and/or a permanent stat buff granted when the spell is cast on a target.
 * **NPC & MOB Manager**: Create NPCs or spawn MOBs **on the fly** — type selector 🤝 PNJ / 🐲 Boss / 👹 Minion (preset stats & HP shown, a "Nombre de minions" field spawns `count` copies at once), then edit stats, move, equip inventory, assign spells, and delete entities. A MOB's inventory acts as its loot: it drops on the ground when the monster falls to 0 PV.
@@ -246,6 +249,7 @@ classDiagram
         +float Charisme
         +float Savoir
         +float Instinct
+        +HitDiceSides() int
         +CalculateLifePoints() float
         +BaseAC() float
     }

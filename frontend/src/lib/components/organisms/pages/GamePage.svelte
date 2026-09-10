@@ -5,7 +5,7 @@
     import QuestPanel from '../QuestPanel.svelte';
     import Button from '../../atoms/Button.svelte';
     import HPBar from '../../atoms/HPBar.svelte';
-    import { myStats, myDerivedStats } from '../../../stores/game';
+    import { myStats, myDerivedStats, connectionStatus } from '../../../stores/game';
 
     export let gameState;
     export let onMove = (dest) => {};
@@ -19,16 +19,19 @@
     export let onCompleteQuest = (name) => {};
 
     let activeTab = 'charsheet';
+    let worldTab = 'combat';
     let castingSpell = null;
 
     $: myStatsData = $myStats;
     $: myDerived = $myDerivedStats;
     $: myEquips = myStatsData?.equipement || { arme: null, armure: null };
+    $: connStatus = $connectionStatus;
 
     $: sameZonePlayers = Object.entries(gameState.players).filter(
         ([p, v]) => v.lieu === gameState.location && p !== gameState.me
     );
     $: zonePlayerCount = sameZonePlayers.length;
+    $: currentLocData = gameState.locations.find(l => l.nom === gameState.location) || null;
 
     function equipItem(item) {
         if (item.isConsumable) {
@@ -64,6 +67,10 @@
             </div>
         </div>
         <div class="header-actions">
+            <div class="connection-indicator" class:connected={connStatus === 'connected'} class:reconnecting={connStatus === 'reconnecting'} class:disconnected={connStatus === 'disconnected'} class:connecting={connStatus === 'connecting'}>
+                <span class="conn-dot"></span>
+                <span class="conn-label">{connStatus === 'connected' ? 'Connecté' : connStatus === 'reconnecting' ? 'Reconnexion...' : connStatus === 'connecting' ? 'Connexion...' : 'Déconnecté'}</span>
+            </div>
             <div class="location-badge">
                 <span class="location-icon">📍</span>
                 <span class="location-text">{gameState.location}</span>
@@ -305,112 +312,142 @@
     <!-- ============ WORLD VIEW ============ -->
     {#if activeTab === 'world'}
         <section class="view-panel fade-in">
-            <!-- Player health & chars present -->
-            <div class="dnd-section">
-                <h3 class="section-title">
-                    <span class="section-icon">❤️</span> Points de Vie
-                </h3>
-                {#if myStatsData}
-                    <div class="own-hp">
-                        <div class="own-hp-row">
-                            <span class="own-name">{myStatsData.nom}</span>
-                            <span class="own-class">{myStatsData.classe}</span>
-                        </div>
-                        <HPBar current={myStatsData.pv} max={myStatsData.max_pv || myDerived.maxPv} />
-                    </div>
-                {/if}
+            <div class="world-subtabs">
+                <button
+                    class="subtab-btn"
+                    class:active={worldTab === 'combat'}
+                    on:click={() => worldTab = 'combat'}
+                >⚔️ Combat</button>
+                <button
+                    class="subtab-btn"
+                    class:active={worldTab === 'explore'}
+                    on:click={() => worldTab = 'explore'}
+                >🗺️ Exploration</button>
+                <button
+                    class="subtab-btn"
+                    class:active={worldTab === 'journal'}
+                    on:click={() => worldTab = 'journal'}
+                >📜 Journal</button>
             </div>
 
-            <!-- Exploration -->
-            <div class="fade-in">
-                <LocationExplorer
-                    locationObjects={gameState.currentLocationObjects}
-                    onLoot={onLootItem}
-                />
-            </div>
-
-            <!-- Players Roster -->
-            <div class="dnd-section">
-                <h3 class="section-title">
-                    <span class="section-icon">👥</span> Héros Présents ({zonePlayerCount})
-                </h3>
-                <div class="players-list custom-scrollbar">
-                    {#each sameZonePlayers as [p, v]}
-                        <div class="player-card">
-                            <div class="player-header">
-                                <strong class="player-name">{v.nom}</strong>
-                                <span class="player-location">{v.classe}</span>
-                            </div>
-                            <HPBar current={v.pv} max={v.max_pv} showNumbers={false} />
-                            <Button variant="danger" onClick={() => onHit(p)} className="w-full py-2 text-sm">
-                                ⚔️ Attaquer
-                            </Button>
-                        </div>
-                    {:else}
-                        <div class="empty-state">
-                            <span class="empty-icon">👥</span>
-                            <span class="empty-text">Personne d'autre ici...</span>
-                        </div>
-                    {/each}
-                </div>
-
-                {#if gameState.npcs && gameState.npcs.length > 0}
-                    <h3 class="section-title npc-title">
-                        <span class="section-icon">👥</span> PNJ & MOB Présents ({gameState.npcs.length})
-                    </h3>
-                    <div class="players-list custom-scrollbar">
-                        {#each gameState.npcs as npc}
-                            <div class="player-card npc-card" class:mob-boss={npc.mobType === 'boss'} class:mob-minion={npc.mobType === 'minion'}>
-                                <div class="player-header">
-                                    <strong class="player-name">
-                                        <span class="mob-icon">{npc.mobType === 'boss' ? '🐲' : npc.mobType === 'minion' ? '👹' : '🤝'}</span>
-                                        {npc.nom}
-                                    </strong>
-                                    <span class="player-location">
-                                        {#if npc.mobType === 'boss'}
-                                            <span class="mob-badge boss">BOSS</span>
-                                        {:else if npc.mobType === 'minion'}
-                                            <span class="mob-badge minion">Minion</span>
-                                        {:else}
-                                            {npc.classe}
-                                        {/if}
-                                    </span>
+            {#if worldTab === 'combat'}
+                <div class="fade-in">
+                    <div class="dnd-section">
+                        <h3 class="section-title">
+                            <span class="section-icon">❤️</span> Points de Vie
+                        </h3>
+                        {#if myStatsData}
+                            <div class="own-hp">
+                                <div class="own-hp-row">
+                                    <span class="own-name">{myStatsData.nom}</span>
+                                    <span class="own-class">{myStatsData.classe}</span>
                                 </div>
-                                <HPBar current={npc.pv} max={npc.max_pv} showNumbers={false} />
-                                <Button variant={npc.mobType === 'boss' ? 'danger' : npc.mobType === 'minion' ? 'warning' : 'danger'} onClick={() => onHit(npc.nom)} className="w-full py-2 text-sm">
-                                    ⚔️ Attaquer
-                                </Button>
+                                <HPBar current={myStatsData.pv} max={myStatsData.max_pv || myDerived.maxPv} />
                             </div>
-                        {/each}
-                    </div>
-                {/if}
-            </div>
-
-            <!-- Movement -->
-            <div class="dnd-section">
-                <h3 class="section-title">
-                    <span class="section-icon">🗺️</span> Ordre de Marche
-                </h3>
-                <div class="move-buttons">
-                    {#each gameState.locations as loc}
-                        {#if loc.nom !== gameState.location}
-                            <Button
-                                onClick={() => onMove(loc.nom)}
-                                variant={loc.nom === 'Taverne' ? 'primary' : loc.nom === 'Donjon' ? 'danger' : 'arcane'}
-                                className="w-full text-sm"
-                            >
-                                {loc.nom === 'Taverne' ? '🏠' : loc.nom === 'Donjon' ? '⚔️' : loc.nom === 'Foret Enchantee' ? '🌿' : loc.nom === 'Montagne Rocheuse' ? '⛰️' : loc.nom === 'Marais Hante' ? '👻' : loc.nom === 'Plaine des Conflits' ? '🚩' : loc.nom === 'Temple Abandonne' ? '🏛️' : '📍'}
-                                {loc.nom}
-                            </Button>
                         {/if}
-                    {/each}
-                </div>
-            </div>
+                    </div>
 
-            <!-- Chat -->
-            <div class="fade-in">
-                <ChatBox logs={gameState.logs} />
-            </div>
+                    <div class="dnd-section">
+                        <h3 class="section-title">
+                            <span class="section-icon">👥</span> Héros Présents ({zonePlayerCount})
+                        </h3>
+                        <div class="players-list custom-scrollbar">
+                            {#each sameZonePlayers as [p, v]}
+                                <div class="player-card">
+                                    <div class="player-header">
+                                        <strong class="player-name">{v.nom}</strong>
+                                        <span class="player-location">{v.classe}</span>
+                                    </div>
+                                    <HPBar current={v.pv} max={v.max_pv} showNumbers={false} />
+                                    <Button variant="danger" onClick={() => onHit(p)} className="w-full py-2 text-sm">
+                                        ⚔️ Attaquer
+                                    </Button>
+                                </div>
+                            {:else}
+                                <div class="empty-state">
+                                    <span class="empty-icon">👥</span>
+                                    <span class="empty-text">Personne d'autre ici...</span>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+
+                    {#if gameState.npcs && gameState.npcs.length > 0}
+                        <div class="dnd-section">
+                            <h3 class="section-title npc-title">
+                                <span class="section-icon">👥</span> PNJ & MOB Présents ({gameState.npcs.length})
+                            </h3>
+                            <div class="players-list custom-scrollbar">
+                                {#each gameState.npcs as npc}
+                                    <div class="player-card npc-card" class:mob-boss={npc.mobType === 'boss'} class:mob-minion={npc.mobType === 'minion'}>
+                                        <div class="player-header">
+                                            <strong class="player-name">
+                                                <span class="mob-icon">{npc.mobType === 'boss' ? '🐲' : npc.mobType === 'minion' ? '👹' : '🤝'}</span>
+                                                {npc.nom}
+                                            </strong>
+                                            <span class="player-location">
+                                                {#if npc.mobType === 'boss'}
+                                                    <span class="mob-badge boss">BOSS</span>
+                                                {:else if npc.mobType === 'minion'}
+                                                    <span class="mob-badge minion">Minion</span>
+                                                {:else}
+                                                    {npc.classe}
+                                                {/if}
+                                            </span>
+                                        </div>
+                                        <HPBar current={npc.pv} max={npc.max_pv} showNumbers={false} />
+                                        <Button variant={npc.mobType === 'boss' ? 'danger' : npc.mobType === 'minion' ? 'warning' : 'danger'} onClick={() => onHit(npc.nom)} className="w-full py-2 text-sm">
+                                            ⚔️ Attaquer
+                                        </Button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+
+            {:else if worldTab === 'explore'}
+                <div class="fade-in">
+                    <div class="dnd-section">
+                        <h3 class="section-title">
+                            <span class="section-icon">📍</span> {gameState.location}
+                        </h3>
+                        {#if currentLocData && currentLocData.background}
+                            <p class="loc-background">{currentLocData.background}</p>
+                        {/if}
+                    </div>
+
+                    <LocationExplorer
+                        locationObjects={gameState.currentLocationObjects}
+                        onLoot={onLootItem}
+                    />
+
+                    <div class="dnd-section">
+                        <h3 class="section-title">
+                            <span class="section-icon">🗺️</span> Se déplacer
+                        </h3>
+                        <div class="move-buttons">
+                            {#each gameState.locations as loc}
+                                {#if loc.nom !== gameState.location}
+                                    <Button
+                                        onClick={() => onMove(loc.nom)}
+                                        variant={loc.nom === 'Taverne' ? 'primary' : loc.nom === 'Donjon' ? 'danger' : 'arcane'}
+                                        className="w-full text-sm"
+                                    >
+                                        {loc.nom === 'Taverne' ? '🏠' : loc.nom === 'Donjon' ? '⚔️' : loc.nom === 'Foret Enchantee' ? '🌿' : loc.nom === 'Montagne Rocheuse' ? '⛰️' : loc.nom === 'Marais Hante' ? '👻' : loc.nom === 'Plaine des Conflits' ? '🚩' : loc.nom === 'Temple Abandonne' ? '🏛️' : '📍'}
+                                        {loc.nom}
+                                    </Button>
+                                {/if}
+                            {/each}
+                        </div>
+                    </div>
+                </div>
+
+            {:else if worldTab === 'journal'}
+                <div class="fade-in">
+                    <ChatBox logs={gameState.logs} />
+                </div>
+            {/if}
         </section>
     {/if}
 </div>
@@ -529,6 +566,68 @@
         color: #c5a059;
     }
 
+    /* Connection Indicator */
+    .connection-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 100px;
+        border: 1px solid rgba(197, 160, 89, 0.15);
+    }
+
+    .conn-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #5a5045;
+        transition: background 0.3s ease;
+    }
+
+    .connection-indicator.connected .conn-dot {
+        background: #22c55e;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    }
+
+    .connection-indicator.reconnecting .conn-dot {
+        background: #f59e0b;
+        animation: pulse-dot 1.2s ease-in-out infinite;
+    }
+
+    .connection-indicator.connecting .conn-dot {
+        background: #3b82f6;
+        animation: pulse-dot 1.2s ease-in-out infinite;
+    }
+
+    .connection-indicator.disconnected .conn-dot {
+        background: #ef4444;
+    }
+
+    .conn-label {
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.7rem;
+        color: #7a6f5f;
+        white-space: nowrap;
+    }
+
+    .connection-indicator.connected .conn-label {
+        color: #22c55e;
+    }
+
+    .connection-indicator.reconnecting .conn-label {
+        color: #f59e0b;
+    }
+
+    .connection-indicator.disconnected .conn-label {
+        color: #ef4444;
+    }
+
+    @keyframes pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+    }
+
     /* View Tab Switcher */
     .view-tabs {
         display: flex;
@@ -582,6 +681,44 @@
         max-width: 720px;
         margin: 0 auto;
         width: 100%;
+    }
+
+    .world-subtabs {
+        display: flex;
+        gap: 8px;
+    }
+
+    .subtab-btn {
+        flex: 1;
+        padding: 10px 0;
+        background: rgba(26, 20, 16, 0.6);
+        border: 1px solid rgba(197, 160, 89, 0.15);
+        border-radius: 8px;
+        color: #7a6f5f;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .subtab-btn.active {
+        background: rgba(197, 160, 89, 0.15);
+        border-color: #c5a059;
+        color: #c5a059;
+    }
+
+    .subtab-btn:hover:not(.active) {
+        border-color: rgba(197, 160, 89, 0.35);
+        color: #a09080;
+    }
+
+    .loc-background {
+        font-family: 'Alegreya', serif;
+        color: #7a6f5f;
+        font-style: italic;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        margin: 0;
     }
 
     /* Sections */
@@ -1141,6 +1278,14 @@
 
         .dnd-section {
             padding: 16px;
+        }
+
+        .conn-label {
+            display: none;
+        }
+
+        .connection-indicator {
+            padding: 6px 8px;
         }
     }
 </style>

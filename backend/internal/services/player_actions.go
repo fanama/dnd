@@ -429,7 +429,10 @@ func (gm *GameManager) actionConsume(char *domain.Character, itemName string) {
 	}
 	item := char.Inventaire[itemIdx]
 	if item.IsConsumable {
-		heal := char.Stats.Constitution * 5
+		heal := float64(rollDiceFn(2, 4)) + domain.AbilityModifier(char.Stats.Constitution)
+		if heal < 1 {
+			heal = 1
+		}
 		char.CurrentPV += heal
 		if char.CurrentPV > char.Stats.CalculateLifePoints() {
 			char.CurrentPV = char.Stats.CalculateLifePoints()
