@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -21,9 +22,35 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// spaHandler serves a built Svelte app (dist folder) and falls back to index.html.
+func spaHandler(dist string) http.Handler {
+	fs := http.FileServer(http.Dir(dist))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.NotFound(w, r)
+			return
+		}
+		p := filepath.Join(dist, filepath.FromSlash(r.URL.Path))
+		if r.URL.Path != "/" {
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				fs.ServeHTTP(w, r)
+				return
+			}
+		}
+		http.ServeFile(w, r, filepath.Join(dist, "index.html"))
+	})
+}
+
 func main() {
 	// Dependency Injection
-	repo, err := repository.NewSQLiteRepository("game.db")
+	repo, err := repository.NewSQLiteRepository(envOr("DB_PATH", "game.db"))
 	if err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
@@ -32,6 +59,12 @@ func main() {
 	gm := services.NewGameManager(repo)
 	defer gm.Close()
 
+	// Option A: one process serves static apps and the WebSocket for both.
+	playerDist := envOr("PLAYER_DIST", "../frontend/dist")
+	dmDist := envOr("DM_DIST", "../dm-frontend/dist")
+
+	http.Handle("/dm/", http.StripPrefix("/dm/", spaHandler(dmDist)))
+	http.Handle("/", spaHandler(playerDist))
 	http.HandleFunc("/ws/", func(w http.ResponseWriter, r *http.Request) {
 		pseudo := r.URL.Path[len("/ws/"):]
 		if pseudo == "" {
@@ -72,9 +105,10 @@ func main() {
 		}
 	})
 
-	log.Println("Server starting on :8000")
+	port := envOr("PORT", "8000")
+	log.Println("Server starting on :" + port)
 
-	srv := &http.Server{Addr: ":8000", Handler: nil}
+	srv := &http.Server{Addr: ":" + port, Handler: nil}
 	done := make(chan struct{})
 	go func() {
 		sig := make(chan os.Signal, 1)

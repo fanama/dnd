@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+frontend/node_modules
+dm-frontend/node_modules
+frontend/dist
+dm-frontend/dist
+game.db
+game.db.bak
+backend/server
+*.log

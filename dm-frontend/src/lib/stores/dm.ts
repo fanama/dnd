@@ -92,10 +92,20 @@ export const dmState = writable<DMState>({
 
 let socket: WebSocket | undefined;
 
+function wsUrl(pseudo: string): string {
+    const configured = import.meta.env.VITE_WS_URL as string | undefined;
+    if (configured) return `${configured.replace(/\/$/, '')}/${pseudo}`;
+    if (import.meta.env.PROD) {
+        const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        return `${scheme}://${window.location.hostname}/ws/${pseudo}`;
+    }
+    return `ws://${window.location.hostname}:8000/ws/${pseudo}`;
+}
+
 export function dmConnect(pseudo: string): void {
     if (socket) socket.close();
 
-    socket = new WebSocket(`ws://${window.location.hostname}:8000/ws/${pseudo}`);
+    socket = new WebSocket(wsUrl(pseudo));
 
     socket.onopen = () => {
         dmState.update(s => ({ ...s, me: pseudo, connected: true }));

@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: dnd-app
+    runtime: docker
+    plan: free
+    healthCheckPath: /
