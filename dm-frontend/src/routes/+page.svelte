@@ -33,24 +33,9 @@
             destination: npc.lieu,
             pv: npc.pv,
             alignement: npc.alignement,
+            mob_type: npc.type || 'pnj',
+            count: npc.count || 1,
         });
-        setTimeout(() => {
-            dmAction('dm_edit_npc', {
-                item_name: npc.nom,
-                stats: {
-                    force: npc.force,
-                    constitution: npc.constitution,
-                    vitesse: npc.vitesse,
-                    charisme: npc.charisme,
-                    savoir: npc.savoir,
-                    instinct: npc.instinct,
-                    nom: npc.nom,
-                    background: npc.classe,
-                },
-                pv: 0,
-                alignement: '',
-            });
-        }, 200);
     }
 
     function editNpc(name, partialStats, pv, alignement) {
@@ -71,6 +56,10 @@
             dmAction('dm_remove_npc', { item_name: name });
             selectPlayer(null);
         }
+    }
+
+    function removeNpcs(names) {
+        dmAction('dm_remove_npcs', { names });
     }
 
     function npcAddItem(name, item) {
@@ -171,6 +160,8 @@
                                 <h2 class="editor-title">
                                     {selectedData.nom}
                                     {#if selectedIsNpc}<span class="npc-badge">PNJ</span>{/if}
+                                    {#if selectedData.mobType === 'boss'}<span class="npc-badge boss">🐲 BOSS</span>{/if}
+                                    {#if selectedData.mobType === 'minion'}<span class="npc-badge minion">👹 Minion</span>{/if}
                                 </h2>
                                 <button class="btn-danger-sm" on:click={() => selectedIsNpc ? removeNpc(selected) : deletePlayer(selected)}>
                                     💀 Supprimer
@@ -274,6 +265,7 @@
                         locations={$dmState.locations}
                         onAddNpc={addNpc}
                         onRemoveNpc={removeNpc}
+                        onBulkRemove={removeNpcs}
                         onEditNpc={editNpc}
                         onMoveNpc={moveNpc}
                         onNpcAddItem={npcAddItem}
@@ -588,6 +580,18 @@
         font-family: 'MedievalSharp', cursive;
         font-size: 0.7rem;
         vertical-align: middle;
+    }
+
+    .npc-badge.boss {
+        background: rgba(239, 68, 68, 0.18);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+    }
+
+    .npc-badge.minion {
+        background: rgba(217, 119, 6, 0.15);
+        border-color: rgba(217, 119, 6, 0.4);
+        color: #fbbf24;
     }
 
     .editor-section {

@@ -7,29 +7,32 @@
     export let onMoveNpc = (name, location) => {};
     export let onNpcAddItem = (name, item) => {};
     export let onNpcRemoveItem = (name, index) => {};
+    export let onBulkRemove = (names) => {};
     export let selectNpc = (name) => {};
 
     let selected = null;
     let showAdd = false;
+    let selecting = false;
+    let selectedNames = [];
 
     let newNpc = {
         nom: '',
         lieu: 'Taverne',
         pv: 100,
         alignement: 'Neutre',
-        force: 10,
-        constitution: 10,
-        vitesse: 10,
-        charisme: 10,
-        savoir: 10,
-        instinct: 10,
-        classe: 'PNJ',
+        type: 'pnj',
+        count: 1,
     };
 
     let newItem = { nom: '', prix: 0, type: 'arme', bonusDegats: 0, bonusArmure: 0, desDegats: 'd6', isConsumable: false };
     let showItemForm = false;
 
     const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+
+    function setType(t) {
+        const pv = t === 'boss' ? 300 : t === 'minion' ? 50 : 100;
+        newNpc = { ...newNpc, type: t, pv };
+    }
 
     function addNpc() {
         if (!newNpc.nom.trim()) return;
@@ -38,21 +41,39 @@
             lieu: newNpc.lieu,
             pv: newNpc.pv,
             alignement: newNpc.alignement,
-            force: newNpc.force,
-            constitution: newNpc.constitution,
-            vitesse: newNpc.vitesse,
-            charisme: newNpc.charisme,
-            savoir: newNpc.savoir,
-            instinct: newNpc.instinct,
-            classe: newNpc.classe,
+            type: newNpc.type,
+            count: newNpc.count,
         });
-        newNpc = { ...newNpc, nom: '', pv: 100 };
+        newNpc = { ...newNpc, nom: '', pv: 100, count: 1 };
         showAdd = false;
     }
 
     function select(name) {
         selected = selected === name ? null : name;
         if (selected) selectNpc(selected);
+    }
+
+    function isSelected(name) {
+        return selectedNames.includes(name);
+    }
+
+    function toggleSelect(name) {
+        selectedNames = isSelected(name)
+            ? selectedNames.filter((n) => n !== name)
+            : [...selectedNames, name];
+    }
+
+    function exitSelection() {
+        selecting = false;
+        selectedNames = [];
+    }
+
+    function bulkRemove() {
+        if (!selectedNames.length) return;
+        if (confirm(`Supprimer ${selectedNames.length} entité(s) sélectionnée(s) ?`)) {
+            onBulkRemove([...selectedNames]);
+        }
+        exitSelection();
     }
 
     function npcStat(npc, key) {
@@ -90,19 +111,52 @@
         if (item.isConsumable) return '🧪';
         return '📦';
     }
+
+    function mobIcon(npc) {
+        return npc.mobType === 'boss' ? '🐲' : npc.mobType === 'minion' ? '👹' : '🤝';
+    }
+
+    function mobLabel(npc) {
+        return npc.mobType === 'boss' ? 'BOSS' : npc.mobType === 'minion' ? 'Minion' : null;
+    }
 </script>
 
 <div class="dnd-section npc-manager">
-    <h2 class="panel-title"><span>🤝</span> PNJ</h2>
+    <h2 class="panel-title"><span>👥</span> PNJ & MOB</h2>
 
     {#if !showAdd}
         <button class="btn-add-npc" on:click={() => showAdd = true}>
-            + Ajouter un PNJ
+            + Ajouter un PNJ / MOB
         </button>
     {:else}
         <div class="add-form fade-in">
             <label class="field-label">Nom</label>
-            <input class="form-input" bind:value={newNpc.nom} placeholder="Nom du PNJ" />
+            <input class="form-input" bind:value={newNpc.nom} placeholder="Nom du PNJ ou du MOB" />
+            <label class="field-label">Type</label>
+            <div class="type-row">
+                {#each [
+                    { key: 'pnj', label: '🤝 PNJ' },
+                    { key: 'boss', label: '🐲 Boss' },
+                    { key: 'minion', label: '👹 Minion' },
+                ] as t}
+                    <button
+                        type="button"
+                        class="type-btn"
+                        class:active={newNpc.type === t.key}
+                        on:click={() => setType(t.key)}
+                    >
+                        {t.label}
+                    </button>
+                {/each}
+            </div>
+            {#if newNpc.type === 'minion'}
+                <div class="form-row">
+                    <div class="mini-field flex-1">
+                        <label>Nombre de minions</label>
+                        <input class="form-input-sm" type="number" bind:value={newNpc.count} min="1" max="20" />
+                    </div>
+                </div>
+            {/if}
             <div class="form-row">
                 <div class="mini-field flex-1">
                     <label>Lieu</label>
@@ -126,17 +180,39 @@
         </div>
     {/if}
 
+    <div class="bulk-bar">
+        {#if selecting}
+            <span class="bulk-count">{selectedNames.length} sélectionné{selectedNames.length > 1 ? 's' : ''}</span>
+            <button class="bulk-delete" disabled={selectedNames.length === 0} on:click={bulkRemove}>
+                🗑️ Supprimer
+            </button>
+            <button class="bulk-cancel" on:click={exitSelection}>✕ Annuler</button>
+        {:else}
+            <button class="bulk-enter" on:click={() => selecting = true}>🗑️ Supprimer plusieurs</button>
+        {/if}
+    </div>
+
     <div class="npc-list custom-scrollbar">
         {#each Object.entries(npcs) as [name, npc]}
-            <div class="npc-card">
-                <button class="npc-header" on:click={() => select(name)}>
-                    <span class="npc-icon">🤖</span>
-                    <div class="npc-info">
-                        <span class="npc-name">{npc.nom}</span>
-                        <span class="npc-loc">📍 {npc.lieu} · ❤️ {npc.pv}/{npc.max_pv}</span>
-                    </div>
-                    <span class="npc-chevron" class:open={selected === name}>▾</span>
-                </button>
+            <div class="npc-card" class:boss={npc.mobType === 'boss'} class:minion={npc.mobType === 'minion'}>
+                <div class="npc-head-row">
+                    {#if selecting}
+                        <label class="npc-check">
+                            <input type="checkbox" checked={isSelected(name)} on:change={() => toggleSelect(name)} />
+                        </label>
+                    {/if}
+                    <button class="npc-header" on:click={() => selecting ? toggleSelect(name) : select(name)}>
+                        <span class="npc-icon">{mobIcon(npc)}</span>
+                        <div class="npc-info">
+                            <span class="npc-name">{npc.nom}</span>
+                            {#if mobLabel(npc)}
+                                <span class="npc-badge" class:boss={npc.mobType === 'boss'}>{mobLabel(npc)}</span>
+                            {/if}
+                            <span class="npc-loc">📍 {npc.lieu} · ❤️ {npc.pv}/{npc.max_pv}</span>
+                        </div>
+                        <span class="npc-chevron" class:open={selected === name}>▾</span>
+                    </button>
+                </div>
 
                 {#if selected === name}
                     <div class="npc-body fade-in">
@@ -263,8 +339,8 @@
             </div>
         {:else}
             <div class="empty-state">
-                <span class="empty-icon">🤝</span>
-                <span class="empty-text">Aucun PNJ pour l'instant...</span>
+                <span class="empty-icon">👥</span>
+                <span class="empty-text">Aucun PNJ ou MOB pour l'instant...</span>
             </div>
         {/each}
     </div>
@@ -295,9 +371,9 @@
         background: rgba(197, 160, 89, 0.08);
         border: 1px dashed rgba(197, 160, 89, 0.25);
         border-radius: 8px;
-        color: #7a6f5f;
+        color: #a9a090;
         font-family: 'MedievalSharp', cursive;
-        font-size: 0.85rem;
+        font-size: 0.88rem;
         cursor: pointer;
         transition: all 0.2s ease;
     }
@@ -315,11 +391,110 @@
         overflow-y: auto;
     }
 
+    .bulk-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .bulk-enter {
+        width: 100%;
+        padding: 9px;
+        background: rgba(185, 28, 28, 0.08);
+        border: 1px dashed rgba(239, 68, 68, 0.3);
+        border-radius: 8px;
+        color: #fca5a5;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .bulk-enter:hover {
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fecaca;
+    }
+
+    .bulk-count {
+        flex: 1;
+        font-family: 'Alegreya', serif;
+        color: #e8d9b0;
+        font-size: 0.88rem;
+    }
+
+    .bulk-delete {
+        padding: 7px 14px;
+        background: rgba(185, 28, 28, 0.25);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        border-radius: 6px;
+        color: #fecaca;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .bulk-delete:hover:not(:disabled) {
+        background: rgba(185, 28, 28, 0.45);
+    }
+
+    .bulk-delete:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .bulk-cancel {
+        padding: 7px 14px;
+        background: transparent;
+        border: 1px solid rgba(197, 160, 89, 0.2);
+        border-radius: 6px;
+        color: #a9a090;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+
+    .bulk-cancel:hover {
+        color: #c5a059;
+        border-color: rgba(197, 160, 89, 0.4);
+    }
+
+    .npc-head-row {
+        display: flex;
+        align-items: center;
+    }
+
+    .npc-check {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 8px 0 10px;
+        cursor: pointer;
+    }
+
+    .npc-check input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: #dc2626;
+        cursor: pointer;
+    }
+
     .npc-card {
         border: 1px solid rgba(197, 160, 89, 0.1);
         border-radius: 8px;
         overflow: hidden;
+        max-width: 100%;
+        min-width: 0;
         transition: border-color 0.2s ease;
+    }
+
+    .npc-card.boss {
+        border-color: rgba(239, 68, 68, 0.45);
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), transparent);
+    }
+
+    .npc-card.minion {
+        border-color: rgba(217, 119, 6, 0.35);
     }
 
     .npc-card:hover {
@@ -327,7 +502,8 @@
     }
 
     .npc-header {
-        width: 100%;
+        flex: 1;
+        min-width: 0;
         display: flex;
         align-items: center;
         gap: 10px;
@@ -339,26 +515,47 @@
         text-align: left;
     }
 
-    .npc-icon { font-size: 1.1rem; flex-shrink: 0; }
+    .npc-icon { font-size: 1.25rem; flex-shrink: 0; }
 
     .npc-info {
         flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 1px;
+        gap: 2px;
         min-width: 0;
     }
 
     .npc-name {
         font-family: 'MedievalSharp', cursive;
-        color: #c5a059;
-        font-size: 0.85rem;
+        color: #e8d9b0;
+        font-size: 0.92rem;
+        overflow-wrap: anywhere;
+    }
+
+    .npc-badge {
+        align-self: flex-start;
+        padding: 2px 10px;
+        background: rgba(217, 119, 6, 0.15);
+        border: 1px solid rgba(217, 119, 6, 0.4);
+        border-radius: 100px;
+        color: #fbbf24;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.68rem;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+    }
+
+    .npc-badge.boss {
+        background: rgba(239, 68, 68, 0.18);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
     }
 
     .npc-loc {
         font-family: 'Alegreya', serif;
-        color: #7a6f5f;
-        font-size: 0.7rem;
+        color: #a9a090;
+        font-size: 0.78rem;
+        overflow-wrap: anywhere;
     }
 
     .npc-chevron {
@@ -393,8 +590,8 @@
 
     .mini-field label {
         font-family: 'MedievalSharp', cursive;
-        color: #7a6f5f;
-        font-size: 0.6rem;
+        color: #a9a090;
+        font-size: 0.7rem;
     }
 
     .flex-1 { flex: 1; }
@@ -407,8 +604,8 @@
 
     .field-label {
         font-family: 'MedievalSharp', cursive;
-        color: #7a6f5f;
-        font-size: 0.65rem;
+        color: #a9a090;
+        font-size: 0.72rem;
     }
 
     .danger-actions {
@@ -417,13 +614,13 @@
     }
 
     .btn-danger {
-        padding: 5px 12px;
+        padding: 6px 14px;
         background: rgba(185, 28, 28, 0.2);
         border: 1px solid rgba(239, 68, 68, 0.3);
         border-radius: 6px;
         color: #fca5a5;
         font-family: 'MedievalSharp', cursive;
-        font-size: 0.7rem;
+        font-size: 0.78rem;
         cursor: pointer;
         transition: all 0.2s ease;
     }
@@ -451,24 +648,26 @@
 
     .item-name {
         flex: 1;
+        min-width: 0;
         font-family: 'MedievalSharp', cursive;
-        color: #c5a059;
-        font-size: 0.75rem;
+        color: #e8d9b0;
+        font-size: 0.8rem;
+        overflow-wrap: anywhere;
     }
 
     .item-dice {
         font-family: 'Alegreya', serif;
-        font-size: 0.6rem;
+        font-size: 0.68rem;
         color: #c4b5fd;
         background: rgba(139, 92, 246, 0.15);
-        padding: 1px 5px;
+        padding: 2px 6px;
         border-radius: 4px;
         white-space: nowrap;
     }
 
     .btn-remove {
-        width: 18px;
-        height: 18px;
+        width: 22px;
+        height: 22px;
         background: rgba(185, 28, 28, 0.2);
         border: 1px solid rgba(239, 68, 68, 0.2);
         border-radius: 4px;
@@ -477,7 +676,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.6rem;
+        font-size: 0.72rem;
         transition: all 0.2s ease;
         flex-shrink: 0;
     }
@@ -488,13 +687,13 @@
 
     .btn-add-item {
         width: 100%;
-        padding: 5px;
+        padding: 7px;
         background: transparent;
-        border: 1px dashed rgba(197, 160, 89, 0.15);
+        border: 1px dashed rgba(197, 160, 89, 0.2);
         border-radius: 6px;
-        color: #5a5045;
+        color: #8b8171;
         font-family: 'MedievalSharp', cursive;
-        font-size: 0.7rem;
+        font-size: 0.76rem;
         cursor: pointer;
         transition: all 0.2s ease;
     }
@@ -508,9 +707,9 @@
         text-align: center;
         padding: 8px;
         font-family: 'Alegreya', serif;
-        color: #5a5045;
+        color: #8b8171;
         font-style: italic;
-        font-size: 0.7rem;
+        font-size: 0.76rem;
     }
 
     .empty-state {
@@ -528,9 +727,9 @@
 
     .empty-text {
         font-family: 'Alegreya', serif;
-        color: #5a5045;
+        color: #8b8171;
         font-style: italic;
-        font-size: 0.8rem;
+        font-size: 0.86rem;
     }
 
     .add-form {
@@ -545,13 +744,13 @@
 
     .form-input {
         width: 100%;
-        padding: 6px 8px;
+        padding: 7px 9px;
         background: rgba(0, 0, 0, 0.5);
         border: 1px solid rgba(197, 160, 89, 0.2);
         border-radius: 4px;
-        color: #e8e0d4;
+        color: #f2ead8;
         font-family: 'Alegreya', serif;
-        font-size: 0.8rem;
+        font-size: 0.85rem;
         outline: none;
     }
 
@@ -570,13 +769,13 @@
 
     .type-btn {
         flex: 1;
-        padding: 6px 4px;
+        padding: 7px 4px;
         background: rgba(0, 0, 0, 0.3);
         border: 1px solid rgba(197, 160, 89, 0.2);
         border-radius: 6px;
-        color: #7a6f5f;
+        color: #a9a090;
         font-family: 'MedievalSharp', cursive;
-        font-size: 0.7rem;
+        font-size: 0.76rem;
         cursor: pointer;
         transition: all 0.2s ease;
     }
@@ -593,13 +792,13 @@
     }
 
     .form-select-sm {
-        padding: 4px 6px;
+        padding: 5px 7px;
         background: rgba(0, 0, 0, 0.5);
         border: 1px solid rgba(197, 160, 89, 0.2);
         border-radius: 4px;
-        color: #e8e0d4;
+        color: #f2ead8;
         font-family: 'Alegreya', serif;
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         text-align: center;
         outline: none;
         -moz-appearance: textfield;
@@ -610,22 +809,22 @@
         align-items: center;
         gap: 4px;
         font-family: 'Alegreya', serif;
-        color: #7a6f5f;
-        font-size: 0.7rem;
+        color: #a9a090;
+        font-size: 0.76rem;
         cursor: pointer;
     }
 
     .form-check input[type="checkbox"] { accent-color: #c5a059; }
 
     .form-input-sm {
-        width: 50px;
-        padding: 4px 6px;
+        width: 62px;
+        padding: 5px 7px;
         background: rgba(0, 0, 0, 0.5);
         border: 1px solid rgba(197, 160, 89, 0.2);
         border-radius: 4px;
-        color: #e8e0d4;
+        color: #f2ead8;
         font-family: 'Alegreya', serif;
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         text-align: center;
         outline: none;
         -moz-appearance: textfield;
@@ -638,13 +837,13 @@
 
     .form-select {
         width: 100%;
-        padding: 4px 6px;
+        padding: 5px 7px;
         background: rgba(0, 0, 0, 0.5);
         border: 1px solid rgba(197, 160, 89, 0.2);
         border-radius: 4px;
-        color: #e8e0d4;
+        color: #f2ead8;
         font-family: 'Alegreya', serif;
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         outline: none;
     }
 
@@ -655,24 +854,24 @@
     }
 
     .btn-cancel {
-        padding: 4px 10px;
+        padding: 5px 12px;
         background: transparent;
         border: 1px solid rgba(197, 160, 89, 0.2);
         border-radius: 4px;
-        color: #7a6f5f;
+        color: #a9a090;
         font-family: 'MedievalSharp', cursive;
-        font-size: 0.7rem;
+        font-size: 0.76rem;
         cursor: pointer;
     }
 
     .btn-add {
-        padding: 4px 10px;
+        padding: 5px 12px;
         background: rgba(197, 160, 89, 0.15);
         border: 1px solid rgba(197, 160, 89, 0.3);
         border-radius: 4px;
-        color: #c5a059;
+        color: #e8d9b0;
         font-family: 'MedievalSharp', cursive;
-        font-size: 0.7rem;
+        font-size: 0.76rem;
         cursor: pointer;
         transition: all 0.2s ease;
     }

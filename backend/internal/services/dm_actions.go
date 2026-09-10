@@ -1,6 +1,9 @@
 package services
 
 import (
+	"fmt"
+	"strings"
+
 	"dnd-backend/internal/domain"
 	"github.com/google/uuid"
 )
@@ -183,37 +186,124 @@ func (gm *GameManager) dmEditLocation(oldName, newName, newBg string) {
 
 // --- NPC management (DM only) ---
 
-func (gm *GameManager) dmAddNPC(name, location string, pv float64, align string) {
+// mobPresetStats returns the "à la volée" default stats for a MOB type.
+func mobPresetStats(mobType string) domain.Stats {
+	switch mobType {
+	case "boss":
+		return domain.Stats{Force: 18, Constitution: 16, Vitesse: 10, Charisme: 8, Savoir: 12, Instinct: 12}
+	case "minion":
+		return domain.Stats{Force: 12, Constitution: 8, Vitesse: 12, Charisme: 6, Savoir: 4, Instinct: 8}
+	default:
+		return domain.Stats{Force: 10, Constitution: 10, Vitesse: 10, Charisme: 10, Savoir: 10, Instinct: 10}
+	}
+}
+
+// mobPresetPV returns the default hit points for a MOB type when none is given.
+func mobPresetPV(mobType string) float64 {
+	switch mobType {
+	case "boss":
+		return 300
+	case "minion":
+		return 50
+	default:
+		return 0 // 0 → derive from Constitution
+	}
+}
+
+func (gm *GameManager) uniqueNPCName(base string) string {
+	name := base
+	for i := 1; ; i++ {
+		if _, exists := gm.World.NPCs[name]; !exists {
+			return name
+		}
+		name = fmt.Sprintf("%s (%d)", base, i)
+	}
+}
+
+// dmAddNPC creates one or more NPCs/MOBs "à la volée". `mobType` is empty
+// (PNJ), "boss" or "minion"; `count` spawns several copies for minions.
+func (gm *GameManager) dmAddNPC(name, location string, pv float64, align string, stats domain.Stats, mobType string, count int) {
+	mobType = strings.ToLower(strings.TrimSpace(mobType))
+	if mobType != "boss" && mobType != "minion" {
+		mobType = ""
+	}
 	if name == "" {
 		return
 	}
-	// Check existing
-	if _, exists := gm.World.NPCs[name]; exists {
-		gm.chat("⚠️ Un PNJ nommé \"%s\" existe déjà.", name)
-		return
+	if count < 1 {
+		count = 1
 	}
-	stats := domain.Stats{
-		Nom:        name,
-		Background: "PNJ",
-		Force:      10, Constitution: 10, Vitesse: 10, Charisme: 10, Savoir: 10, Instinct: 10,
+	if mobType == "boss" {
+		count = 1
 	}
-	if pv <= 0 {
-		pv = stats.CalculateLifePoints()
+	if count > 20 {
+		count = 20
 	}
-	if align == "" {
-		align = "Neutre"
+
+	label := "PNJ"
+	if mobType == "boss" {
+		label = "Boss"
+	} else if mobType == "minion" {
+		label = "Minion"
 	}
-	npc := &domain.Character{
-		ID:         uuid.New(),
-		Alignement: align,
-		Stats:      stats,
-		CurrentPV:  pv,
-		Lieu:       location,
-		Inventaire: []domain.Item{},
-		Sorts:      []domain.Sort{},
+
+	statsProvided := stats.Nom != "" || stats.Background != "" ||
+		stats.Force != 0 || stats.Constitution != 0 || stats.Vitesse != 0 ||
+		stats.Charisme != 0 || stats.Savoir != 0 || stats.Instinct != 0
+
+	spawned := 0
+	for i := 0; i < count; i++ {
+		displayName := name
+		if count > 1 {
+			displayName = fmt.Sprintf("%s #%d", name, i+1)
+		}
+		displayName = gm.uniqueNPCName(displayName)
+
+		base := stats
+		if statsProvided {
+			base.Background = stats.Background
+			if base.Background == "" {
+				base.Background = label
+			}
+		} else {
+			base = mobPresetStats(mobType)
+			base.Background = label
+		}
+		base.Nom = displayName
+
+		if pv <= 0 {
+			pv = mobPresetPV(mobType)
+			if pv <= 0 {
+				pv = base.CalculateLifePoints()
+			}
+		}
+		if align == "" {
+			align = "Neutre"
+		}
+
+		gm.World.NPCs[displayName] = &domain.Character{
+			ID:         uuid.New(),
+			Alignement: align,
+			Stats:      base,
+			CurrentPV:  pv,
+			Lieu:       location,
+			Inventaire: []domain.Item{},
+			Sorts:      []domain.Sort{},
+			MobType:    mobType,
+		}
+		spawned++
 	}
-	gm.World.NPCs[name] = npc
-	gm.chat("🤝 Le MDJ a ajouté le PNJ \"%s\" à %s.", name, location)
+
+	switch {
+	case mobType == "boss":
+		gm.chat("🐲 Le MDJ a ajouté le BOSS \"%s\" à %s.", name, location)
+	case mobType == "minion" && spawned > 1:
+		gm.chat("👹 Le MDJ a ajouté %d minions \"%s\" à %s.", spawned, name, location)
+	case mobType == "minion":
+		gm.chat("👹 Le MDJ a ajouté le minion \"%s\" à %s.", name, location)
+	default:
+		gm.chat("🤝 Le MDJ a ajouté le PNJ \"%s\" à %s.", name, location)
+	}
 	gm.persistWorld()
 	gm.NotifyChange()
 }
@@ -225,6 +315,26 @@ func (gm *GameManager) dmRemoveNPC(name string) {
 	}
 	delete(gm.World.NPCs, name)
 	gm.chat("🗑️ Le MDJ a supprimé le PNJ \"%s\" du monde.", npc.Stats.Nom)
+	gm.persistWorld()
+	gm.NotifyChange()
+}
+
+// dmRemoveNPCs removes several NPCs/MOBs (boss, minions...) by name in one shot.
+func (gm *GameManager) dmRemoveNPCs(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	removed := 0
+	for _, n := range names {
+		if _, ok := gm.World.NPCs[n]; ok {
+			delete(gm.World.NPCs, n)
+			removed++
+		}
+	}
+	if removed == 0 {
+		return
+	}
+	gm.chat("🗑️ Le MDJ a supprimé %d PNJ/MOB du monde.", removed)
 	gm.persistWorld()
 	gm.NotifyChange()
 }

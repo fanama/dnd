@@ -340,6 +340,125 @@ func TestActionCastSpellNPCDeathClampedToZero(t *testing.T) {
 	}
 }
 
+func TestDmAddMobSpawnsBossAndMinions(t *testing.T) {
+	gm := newTestGameManager(t)
+	defer gm.Close()
+
+	// Boss: never duplicated, default preset stats + 300 PV.
+	gm.dmAddNPC("Roi Goblin", "Donjon", 0, "", domain.Stats{}, "boss", 3)
+	boss, ok := gm.World.NPCs["Roi Goblin"]
+	if !ok {
+		t.Fatalf("boss was not created")
+	}
+	if boss.MobType != "boss" || boss.Stats.Force != 18 || boss.CurrentPV != 300 {
+		t.Errorf("boss = mobType:%q force:%v pv:%v, want mobType:boss force:18 pv:300", boss.MobType, boss.Stats.Force, boss.CurrentPV)
+	}
+
+	// Minions: 3 copies with suffixed names, default preset stats + 50 PV.
+	gm.dmAddNPC("Goblin", "Donjon", 0, "", domain.Stats{}, "minion", 3)
+	for _, name := range []string{"Goblin #1", "Goblin #2", "Goblin #3"} {
+		npc, ok := gm.World.NPCs[name]
+		if !ok {
+			t.Fatalf("minion %q was not created", name)
+		}
+		if npc.MobType != "minion" || npc.CurrentPV != 50 {
+			t.Errorf("%s = mobType:%q pv:%v, want mobType:minion pv:50", name, npc.MobType, npc.CurrentPV)
+		}
+	}
+
+	// Regular PNJ keeps its previous behavior (Constitution * 10 PV, no mob type).
+	gm.dmAddNPC("Boby", "Taverne", 0, "", domain.Stats{}, "", 1)
+	pnj := gm.World.NPCs["Boby"]
+	if pnj == nil || pnj.MobType != "" || pnj.CurrentPV != 100 {
+		t.Errorf("PNJ Boby = %+v, want mobType empty and 100 PV", pnj)
+	}
+}
+
+func TestActionAttackOnNPCWithWeapon(t *testing.T) {
+	oldRoll := rollD20Fn
+	oldDice := rollDiceFn
+	rollD20Fn = func() int { return 17 }
+	rollDiceFn = func(count, sides int) int { return sides * count }
+	defer func() { rollD20Fn = oldRoll; rollDiceFn = oldDice }()
+
+	gm := newTestGameManager(t)
+	defer gm.Close()
+
+	gm.World.Players["arya"] = &domain.Player{
+		Pseudo:     "arya",
+		Characters: []*domain.Character{newTestCharacter("Arya", domain.Stats{Force: 10}, 100)},
+	}
+	attacker := gm.World.Players["arya"].Characters[0]
+	attacker.Stats.Nom = "Arya"
+	attacker.Lieu = "Donjon"
+	attacker.Equipement.Arme = &domain.Item{Nom: "Épée", DesDégâts: "d8"}
+
+	npc := gm.World.NPCs["Grum le Garde"]
+	npc.CurrentPV = 50
+
+	gm.actionAttack(attacker, "Grum le Garde")
+	// hit → 1d8 max = 8, mod Force 10 = 0, pas de bonus magique → PV 42
+	if npc.CurrentPV != 42 {
+		t.Errorf("PV du PNJ = %v, want 42", npc.CurrentPV)
+	}
+}
+
+func TestActionAttackKillsMOBDropsInventoryAsLoot(t *testing.T) {
+	oldRoll := rollD20Fn
+	oldDice := rollDiceFn
+	rollD20Fn = func() int { return 16 }
+	rollDiceFn = func(count, sides int) int { return sides * count }
+	defer func() { rollD20Fn = oldRoll; rollDiceFn = oldDice }()
+
+	gm := newTestGameManager(t)
+	defer gm.Close()
+
+	gm.World.Players["arya"] = &domain.Player{
+		Pseudo:     "arya",
+		Characters: []*domain.Character{newTestCharacter("Arya", domain.Stats{Force: 10}, 100)},
+	}
+	attacker := gm.World.Players["arya"].Characters[0]
+	attacker.Stats.Nom = "Arya"
+	attacker.Lieu = "Donjon"
+	attacker.Equipement.Arme = &domain.Item{Nom: "Marteau", DesDégâts: "d12", BonusDégâts: 5}
+
+	gm.dmAddNPC("Rat Sinistre", "Donjon", 3, "Chaotique Mauvais", domain.Stats{}, "minion", 1)
+	mob := gm.World.NPCs["Rat Sinistre"]
+	mob.Inventaire = []domain.Item{{Nom: "Morceau de Viande", Prix: 5}}
+
+	gm.actionAttack(attacker, "Rat Sinistre")
+	// 1d12 max = 12 + 0 + 5 = 17 ≥ 3 PV → mort
+	if mob.CurrentPV != 0 {
+		t.Errorf("PV du MOB = %v, want 0 (mort)", mob.CurrentPV)
+	}
+	if len(mob.Inventaire) != 0 {
+		t.Errorf("MOB mort garde son inventaire : %v", mob.Inventaire)
+	}
+	loc := gm.findLocation("Donjon")
+	if loc == nil || !gm.hasItem(loc.Objects, "Morceau de Viande") {
+		t.Errorf("le butin devrait être au sol à Donjon : %+v", loc)
+	}
+}
+
+func TestDmRemoveNPCsBulk(t *testing.T) {
+	gm := newTestGameManager(t)
+	defer gm.Close()
+
+	gm.dmAddNPC("Roi Goblin", "Donjon", 0, "", domain.Stats{}, "boss", 1)
+	gm.dmAddNPC("Goblin", "Donjon", 0, "", domain.Stats{}, "minion", 3)
+
+	gm.dmRemoveNPCs([]string{"Goblin #1", "Goblin #3", "Roi Goblin", "Inexistant"})
+
+	for _, gone := range []string{"Goblin #1", "Goblin #3", "Roi Goblin"} {
+		if _, ok := gm.World.NPCs[gone]; ok {
+			t.Errorf("%q devrait être supprimé", gone)
+		}
+	}
+	if _, ok := gm.World.NPCs["Goblin #2"]; !ok {
+		t.Errorf("Goblin #2 devrait rester (non sélectionné)")
+	}
+}
+
 func failIf(t *testing.T, msg, contains string) {
 	t.Helper()
 	if !strings.Contains(msg, contains) {

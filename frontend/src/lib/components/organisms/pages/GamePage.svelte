@@ -357,16 +357,32 @@
 
                 {#if gameState.npcs && gameState.npcs.length > 0}
                     <h3 class="section-title npc-title">
-                        <span class="section-icon">🤝</span> PNJ Présents ({gameState.npcs.length})
+                        <span class="section-icon">👥</span> PNJ & MOB Présents ({gameState.npcs.length})
                     </h3>
                     <div class="players-list custom-scrollbar">
                         {#each gameState.npcs as npc}
-                            <div class="player-card npc-card">
+                            <div class="player-card npc-card" class:mob-boss={npc.mobType === 'boss'} class:mob-minion={npc.mobType === 'minion'}>
                                 <div class="player-header">
-                                    <strong class="player-name">{npc.nom}</strong>
-                                    <span class="player-location">{npc.classe}</span>
+                                    <strong class="player-name">
+                                        <span class="mob-icon">{npc.mobType === 'boss' ? '🐲' : npc.mobType === 'minion' ? '👹' : '🤝'}</span>
+                                        {npc.nom}
+                                    </strong>
+                                    <span class="player-location">
+                                        {#if npc.mobType === 'boss'}
+                                            <span class="mob-badge boss">BOSS</span>
+                                        {:else if npc.mobType === 'minion'}
+                                            <span class="mob-badge minion">Minion</span>
+                                        {:else}
+                                            {npc.classe}
+                                        {/if}
+                                    </span>
                                 </div>
                                 <HPBar current={npc.pv} max={npc.max_pv} />
+                                {#if npc.mobType}
+                                    <Button variant={npc.mobType === 'boss' ? 'danger' : 'warning'} onClick={() => onHit(npc.nom)} className="w-full py-2 text-sm">
+                                        ⚔️ Attaquer
+                                    </Button>
+                                {/if}
                             </div>
                         {/each}
                     </div>
@@ -999,6 +1015,38 @@
     .npc-card {
         border-color: rgba(147, 197, 253, 0.25);
         background: rgba(30, 41, 59, 0.4);
+    }
+
+    .npc-card.mob-boss {
+        border-color: rgba(239, 68, 68, 0.5);
+        background: rgba(69, 10, 10, 0.45);
+    }
+
+    .npc-card.mob-minion {
+        border-color: rgba(217, 119, 6, 0.4);
+        background: rgba(46, 35, 10, 0.4);
+    }
+
+    .mob-icon {
+        margin-right: 4px;
+    }
+
+    .mob-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 100px;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.6rem;
+        letter-spacing: 0.06em;
+        background: rgba(217, 119, 6, 0.15);
+        border: 1px solid rgba(217, 119, 6, 0.4);
+        color: #fbbf24;
+    }
+
+    .mob-badge.boss {
+        background: rgba(239, 68, 68, 0.18);
+        border-color: rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
     }
 
     .player-header {

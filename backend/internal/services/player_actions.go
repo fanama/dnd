@@ -292,14 +292,47 @@ func (gm *GameManager) actionUnequip(char *domain.Character, slot string) {
 }
 
 func (gm *GameManager) actionAttack(attacker *domain.Character, targetPseudo string) {
-	target := gm.getTargetCharacter(targetPseudo)
-	if target == nil || attacker.Lieu != target.Lieu {
+	if target := gm.getTargetCharacter(targetPseudo); target != nil && attacker.Lieu == target.Lieu {
+		gm.chat("%s", resolvePhysicalAttack(attacker, target))
+		gm.checkDeath(target)
 		return
 	}
 
-	msg := resolvePhysicalAttack(attacker, target)
-	gm.chat("%s", msg)
-	gm.checkDeath(target)
+	npc, ok := gm.World.NPCs[targetPseudo]
+	if !ok || attacker.Lieu != npc.Lieu {
+		return
+	}
+	gm.chat("%s", resolvePhysicalAttack(attacker, npc))
+	gm.npcAfterDamage(npc)
+	gm.persistWorld()
+}
+
+// findLocation returns a pointer to the location with the given name.
+func (gm *GameManager) findLocation(name string) *domain.Location {
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == name {
+			return &gm.World.Locations[i]
+		}
+	}
+	return nil
+}
+
+// npcAfterDamage handles an NPC or MOB that just took damage: clamps PV to 0
+// and, on death, drops its inventory as loot on the ground.
+func (gm *GameManager) npcAfterDamage(npc *domain.Character) {
+	if npc.CurrentPV < 0 {
+		npc.CurrentPV = 0
+	}
+	if npc.CurrentPV != 0 {
+		return
+	}
+	if loc := gm.findLocation(npc.Lieu); loc != nil && len(npc.Inventaire) > 0 {
+		loc.Objects = append(loc.Objects, npc.Inventaire...)
+		npc.Inventaire = nil
+		gm.chat("☠️ %s est tombé ! Son butin tombe au sol.", npc.Stats.Nom)
+		return
+	}
+	gm.chat("☠️ %s est tombé !", npc.Stats.Nom)
 }
 
 func (gm *GameManager) actionMove(char *domain.Character, dest string) {
@@ -376,12 +409,7 @@ func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string,
 	}
 	msg := resolveSpellAttack(char, npc, spell)
 	gm.chat("%s", msg)
-	if npc.CurrentPV < 0 {
-		npc.CurrentPV = 0
-	}
-	if npc.CurrentPV == 0 {
-		gm.chat("☠️ %s est tombé !", npc.Stats.Nom)
-	}
+	gm.npcAfterDamage(npc)
 	gm.persistWorld()
 }
 

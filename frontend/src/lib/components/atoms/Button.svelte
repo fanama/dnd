@@ -79,6 +79,13 @@
         box-shadow: 0 4px 0px #1a0a4d;
     }
 
+    .btn.warning {
+        background: linear-gradient(to bottom, #d97706, #92400e);
+        color: #fef3c7;
+        border-color: #b45309;
+        box-shadow: 0 4px 0px #5f2e05;
+    }
+
     .btn:not(.is-disabled):hover {
         color: #fff;
         filter: brightness(1.1);

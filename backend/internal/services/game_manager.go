@@ -29,6 +29,9 @@ type Action struct {
 	NewName      string       `json:"new_name,omitempty"`
 	LocationBg   string       `json:"location_bg,omitempty"`
 	Slot         string       `json:"slot,omitempty"`
+	MobType      string       `json:"mob_type,omitempty"`
+	Count        int          `json:"count,omitempty"`
+	Names        []string     `json:"names,omitempty"`
 	Quest        domain.Quest `json:"quest,omitempty"`
 	QuestName    string       `json:"quest_name,omitempty"`
 	QuestIndex   int          `json:"quest_index,omitempty"`

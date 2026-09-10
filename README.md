@@ -2,7 +2,7 @@
 
 A multiplayer, asynchronous, ultra-lightweight tabletop RPG (TTRPG) platform. The backend is built in **Go** with WebSockets and **SQLite** persistence. The player client is a reactive **Svelte 4** app with **TypeScript**, powered by **Vite**, and a dedicated **Dungeon Master panel** (`dm-frontend`) lets a GM administer the whole world in real time.
 
-The platform manages real-time virtual tabletop sessions: player movement, physical and magic combat, inventory management, spells (attack dice, magic bonuses and stat buffs), quests, NPC management, location exploration, and instant event logging.
+The platform manages real-time virtual tabletop sessions: player movement, physical and magic combat, inventory management, spells (attack dice, magic bonuses and stat buffs), quests, NPC **and MOB management (boss & minions spawned on the fly, monster loot drops)**, location exploration, and instant event logging.
 
 ---
 
@@ -145,7 +145,7 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 ### Client -> Server Actions (Players)
 * **Init (`type: "init"`)**: Sends character name and class. The server uses the URL pseudo to restore existing stats if the player already exists.
 * **Move (`type: "move"`)**: `{"type": "move", "destination": "Donjon"}`
-* **Attack (`type: "attack"`)**: `{"type": "attack", "cible": "Pseudo"}` — melee/magic-weapon attack on another player (same location)
+* **Attack (`type: "attack"`)**: `{"type": "attack", "cible": "PseudoOuNPJOuMOB"}` — melee/magic-weapon attack on another player, an NPC or a MOB present at the same location
 * **Spell (`type: "cast_spell"`)**: `{"type": "cast_spell", "sort": "Nom", "cible": "PseudoOuNPJ"}` — `cible` can be another hero, an NPC present at the location, or yourself (own pseudo, needed for buff spells); the server resolves the attack dice/bonus or applies the buff
 * **Equip (`type: "equip_item"`)**: `{"type": "equip_item", "item_name": "Épée Longue"}` — equips a weapon or armor
 * **Unequip (`type: "unequip_item"`)**: `{"type": "unequip_item", "slot": "weapon"}` — `slot` is `weapon` or `armor`
@@ -166,7 +166,8 @@ All actions are transmitted as JSON objects. The player pseudo from the URL iden
 | `dm_delete_player` | `target_player` | Remove a player from the world & DB |
 | `dm_edit_location` | `destination`, `new_name`, `location_bg` | Rename / re-describe a location (also updates players & NPCs there) |
 | `dm_teleport_item_add` / `dm_teleport_item_remove` | `destination`, `item` / `item_index` | Add/remove loot on the ground |
-| `dm_add_npc` / `dm_remove_npc` | `item_name`, `destination`, `pv`, `alignement` | Create / delete an NPC |
+| `dm_add_npc` / `dm_remove_npc` | `item_name`, `destination`, `pv`, `alignement`, `mob_type`, `count` | Create / delete an NPC or spawn MOBs on the fly (`mob_type`: `boss` or `minion`; `count`: number of minion copies — see Game Engine Rules) |
+| `dm_remove_npcs` | `names` (array) | Delete several NPCs/MOBs (boss, minions...) at once |
 | `dm_edit_npc` | `item_name`, `stats`, `pv`, `alignement` | Edit an NPC (0 values are skipped) |
 | `dm_move_npc` | `item_name`, `destination` | Move an NPC |
 | `dm_npc_add_item` / `dm_npc_remove_item` | `item_name`, `item` / `item_index` | Manage NPC inventory |
@@ -194,7 +195,10 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 * **Sorts de buff**: un sort avec un `Buff` (stat + valeur) n'attaque pas : il applique le bonus aux stats de la cible de façon permanente (Force, Constitution, Vitesse, Charisme, Savoir ou Instinct — CA et PV max suivent automatiquement)
 * **Résultats critiques**: 20 naturel = coup critique (toujours touche, dés dédoublés — `2dX` physiques, et en magie `2dX` si le sort a un dé, sinon jets de Savoir doublés, soit `Savoir × 3` au total) ; 1 naturel = raté (fumble)
 * **Combat**: touche si 20 naturel ou jet ≥ CA
-* **Cibles des sorts**: un héros du même lieu (`cible` = pseudo), un PNJ du même lieu (`cible` = nom du PNJ), ou soi-même (`cible` = son propre pseudo) ; un PNJ réduit à 0 PV est mis à terre (reste à 0 jusqu'à ce que le MDJ le ranime)
+* **Cibles des sorts**: un héros du même lieu (`cible` = pseudo), un PNJ/MOB du même lieu (`cible` = nom du PNJ/MOB), ou soi-même (`cible` = son propre pseudo) ; un PNJ/MOB réduit à 0 PV est mis à terre (reste à 0 jusqu'à ce que le MDJ le ranime)
+* **MOB (boss & minions)**: le MDJ peut spawner des monstres « à la volée » via `dm_add_npc` avec `mob_type` (`boss` ou `minion`) — un boss spawn en unité unique (300 PV par défaut, stats Force 18 / Constitution 16...), les minions en `count` exemplaires nommés `Nom #N` (50 PV par défaut) ; le MDJ peut surcharger stats et PV à la création. Les stats/PV par défaut sont utilisés si rien n'est fourni
+* **Attaque physique sur MOB**: l'action `attack` cible un autre héros, un PNJ **ou un MOB** du même lieu (même formule arme/mêlée/à distance)
+* **Butin à la mort**: quand un MOB (ou PNJ) tombe à 0 PV, son inventaire est déposé au sol du lieu (objet récupérable par les héros via `loot`)
 * **Équipement**: actions `equip_item` / `unequip_item` (slots `weapon`/`armor`) gérées par le serveur et persistées en base ; le personnage démarre avec son arme de classe équipée
 * **Persistence**: Characters are saved to SQLite after every action
 * **Death**: Falling to 0 HP resurrects at the Taverne at full HP
@@ -212,8 +216,8 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 * **Chat Log**: Parchment-styled event journal with numbered entries and auto-scroll.
 * **Class Selection**: Visual card-based class picker (Guerrier, Magicien, Voleur, Clerc, Barde, Ranger).
 * **Form Validation**: Real-time validation with error states on the login form.
-* **NPC Display**: NPCs present at the player's location are shown with their HP bar.
-* **Spell Casting**: Each spell card has a "Lancer" button; clicking it lets the player pick a target — 🧍 themselves (needed for buff spells), 🎯 another hero present, or 👹 an NPC present — then the server resolves the attack or applies the buff (damage dice and attack bonus are honoured).
+* **NPC Display**: NPCs and MOBs present at the player's location are shown with their HP bar; MOBs are highlighted (🐲 **BOSS** / 👹 **Minion** badges) and carry an "⚔️ Attaquer" button so heroes can fight monsters with their weapon.
+* **Spell Casting**: Each spell card has a "Lancer" button; clicking it lets the player pick a target — 🧍 themselves (needed for buff spells), 🎯 another hero present, or 👹 an NPC/MOB present — then the server resolves the attack or applies the buff (damage dice and attack bonus are honoured).
 * **Quest Panel**: Dedicated "Quêtes" tab listing active quests (with obstacle status and rewards) and the quests available at the current location (accept / complete buttons).
 
 ### Dungeon Master Panel
@@ -221,7 +225,8 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 * **Full Character Editor**: Stats, HP, alignment, location teleport, inventory, spells.
 * **Item Editor (type + dés)**: Adding an item to any inventory (character, NPC, or location) lets the DM choose its type — ⚔️ arme (ATK bonus + damage dice `1d4…1d20`), 🛡️ armure (DEF bonus) or 📦 objet (consumable) — no more free-form ATK/DEF fields.
 * **Spell Editor (bonus + dés + buff)**: When adding a spell the DM can set a magic attack bonus (`1d20 + mod(Savoir) + bonus`), a damage dice replacing `Savoir × 1.5`, and/or a permanent stat buff granted when the spell is cast on a target.
-* **NPC Manager**: Create, edit stats, move, equip inventory, assign spells, and delete NPCs.
+* **NPC & MOB Manager**: Create NPCs or spawn MOBs **on the fly** — type selector 🤝 PNJ / 🐲 Boss / 👹 Minion (preset stats & HP shown, a "Nombre de minions" field spawns `count` copies at once), then edit stats, move, equip inventory, assign spells, and delete entities. A MOB's inventory acts as its loot: it drops on the ground when the monster falls to 0 PV.
+* **Bulk Delete**: A "🗑️ Supprimer plusieurs" mode lets the DM tick several NPCs / MOBs / bosses and delete them all in one shot (single `dm_remove_npcs` call).
 * **Quest Editor**: Assign quests to any character and remove them.
 * **Location Manager**: Rename locations, edit descriptions, add/remove ground loot and offered quests, see who's present.
 * **Event Journal**: Live chat log of every DM action broadcast to the world.
@@ -301,6 +306,7 @@ classDiagram
         +Equipement Equipement
         +List~Quest~ Quests
         +string Lieu
+        +string MobType
     }
     class World {
         +uuid ID

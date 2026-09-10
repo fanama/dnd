@@ -77,6 +77,7 @@ type Character struct {
 	Equipement Equipment `json:"equipement"`
 	Quests     []Quest   `json:"quests"`
 	Lieu       string    `json:"lieu"`
+	MobType    string    `json:"mobType,omitempty"`
 }
 
 type Player struct {

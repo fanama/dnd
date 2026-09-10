@@ -58,6 +58,7 @@ export interface PlayerData {
     quests?: Quest[];
     role: boolean;
     is_npc?: boolean;
+    mobType?: string;
 }
 
 export interface Location {
