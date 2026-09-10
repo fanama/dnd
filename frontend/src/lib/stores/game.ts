@@ -34,8 +34,9 @@ export interface Equipment {
 export interface Quest {
     nom: string;
     objectif: string;
-    obstacle: Item[];
+    obstacle: string;
     recompense: Item[];
+    information?: string;
 }
 
 export interface PlayerStats {

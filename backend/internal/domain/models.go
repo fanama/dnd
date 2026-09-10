@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -46,10 +48,35 @@ type SortBuff struct {
 }
 
 type Quest struct {
-	Nom        string `json:"nom"`
-	Objectif   string `json:"objectif"`
-	Obstacle   []Item `json:"obstacle,omitempty"`
-	Recompense []Item `json:"recompense,omitempty"`
+	Nom         string `json:"nom"`
+	Objectif    string `json:"objectif"`
+	Obstacle    string `json:"obstacle,omitempty"`
+	Recompense  []Item `json:"recompense,omitempty"`
+	Information string `json:"information,omitempty"`
+}
+
+func (q *Quest) UnmarshalJSON(data []byte) error {
+	type alias Quest
+	var plain alias
+	if err := json.Unmarshal(data, &plain); err == nil {
+		*q = Quest(plain)
+		return nil
+	}
+	var old struct {
+		Nom        string `json:"nom"`
+		Objectif   string `json:"objectif"`
+		Obstacle   []Item `json:"obstacle"`
+		Recompense []Item `json:"recompense"`
+	}
+	if err2 := json.Unmarshal(data, &old); err2 != nil {
+		return err2
+	}
+	desc := make([]string, 0, len(old.Obstacle))
+	for _, it := range old.Obstacle {
+		desc = append(desc, it.Nom)
+	}
+	*q = Quest{Nom: old.Nom, Objectif: old.Objectif, Obstacle: strings.Join(desc, ", "), Recompense: old.Recompense}
+	return nil
 }
 
 type Item struct {

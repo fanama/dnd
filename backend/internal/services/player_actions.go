@@ -504,24 +504,13 @@ func (gm *GameManager) actionCompleteQuest(char *domain.Character, questName str
 	}
 	quest := char.Quests[idx]
 
-	// The obstacle items must be present in the inventory to complete the quest.
-	if len(quest.Obstacle) > 0 {
-		for _, need := range quest.Obstacle {
-			if !gm.hasItem(char.Inventaire, need.Nom) {
-				gm.chat("🥾 Il manque « %s » à %s pour terminer la quête « %s ».", need.Nom, char.Stats.Nom, quest.Nom)
-				return
-			}
-		}
-		for _, need := range quest.Obstacle {
-			char.Inventaire = gm.removeItem(char.Inventaire, need.Nom)
-		}
-		gm.chat("🧾 %s remet les objets requis de la quête « %s ».", char.Stats.Nom, quest.Nom)
-	}
-
 	for _, reward := range quest.Recompense {
 		char.Inventaire = append(char.Inventaire, reward)
 	}
 	char.Quests = append(char.Quests[:idx], char.Quests[idx+1:]...)
+	if strings.TrimSpace(quest.Information) != "" {
+		gm.chat("📜 %s obtient une information : %s", char.Stats.Nom, strings.TrimSpace(quest.Information))
+	}
 	gm.chat("🏆 %s a terminé la quête « %s » !", char.Stats.Nom, quest.Nom)
 }
 

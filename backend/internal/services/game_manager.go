@@ -266,6 +266,17 @@ func (gm *GameManager) getLatestCharacter(pseudo string) *domain.Character {
 	return player.Characters[len(player.Characters)-1]
 }
 
+// getQuestTarget resolves the character who owns quests, either a player character or a world NPC.
+func (gm *GameManager) getQuestTarget(pseudo string) (*domain.Character, bool) {
+	if char := gm.getLatestCharacter(pseudo); char != nil {
+		return char, false
+	}
+	if npc, ok := gm.World.NPCs[pseudo]; ok {
+		return npc, true
+	}
+	return nil, false
+}
+
 func (gm *GameManager) NotifyChange() {
 	syncData := make(map[string]PlayerEntry)
 	for pseudo, player := range gm.World.Players {
@@ -299,6 +310,7 @@ func (gm *GameManager) NotifyChange() {
 			Sorts:      npc.Sorts,
 			Inventaire: npc.Inventaire,
 			Equipement: npc.Equipement,
+			Quests:     npc.Quests,
 			Stats:      npc.Stats,
 			IsNPC:      true,
 		}

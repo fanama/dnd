@@ -3,19 +3,10 @@
 
     export let myQuests = [];
     export let locationQuests = [];
-    export let inventory = [];
     export let onAccept = (name) => {};
     export let onComplete = (name) => {};
 
     $: activeNames = new Set(myQuests.map(q => q.nom));
-
-    function hasItem(name) {
-        return inventory.some(i => i.nom === name);
-    }
-
-    function obstaclesOk(quest) {
-        return !quest.obstacle || quest.obstacle.every(o => hasItem(o.nom));
-    }
 </script>
 
 <div class="quest-panel">
@@ -32,14 +23,10 @@
                             <span class="quest-status">🔷 En cours</span>
                         </div>
                         <p class="quest-objectif">{quest.objectif}</p>
-                        {#if quest.obstacle && quest.obstacle.length > 0}
-                            <div class="quest-requires">
-                                <span class="requires-label">Requis :</span>
-                                {#each quest.obstacle as ob}
-                                    <span class="req-item" class:ok={hasItem(ob.nom)}>
-                                        {hasItem(ob.nom) ? '✅' : '❌'} {ob.nom}
-                                    </span>
-                                {/each}
+                        {#if quest.obstacle}
+                            <div class="quest-obstacle">
+                                <span class="obstacle-label">Obstacle :</span>
+                                <span class="obstacle-desc">{quest.obstacle}</span>
                             </div>
                         {/if}
                         {#if quest.recompense && quest.recompense.length > 0}
@@ -50,10 +37,15 @@
                                 {/each}
                             </div>
                         {/if}
+                        {#if quest.information}
+                            <div class="quest-info">
+                                <span class="info-label">Information :</span>
+                                <span class="info-text">{quest.information}</span>
+                            </div>
+                        {/if}
                         <Button
                             variant="success"
                             onClick={() => onComplete(quest.nom)}
-                            disabled={!obstaclesOk(quest)}
                             className="w-full py-2 text-sm"
                         >
                             🏆 Terminer la quête
@@ -84,12 +76,10 @@
                                 <span class="quest-status available">📌 Disponible</span>
                             </div>
                             <p class="quest-objectif">{quest.objectif}</p>
-                            {#if quest.obstacle && quest.obstacle.length > 0}
-                                <div class="quest-requires">
-                                    <span class="requires-label">Requis :</span>
-                                    {#each quest.obstacle as ob}
-                                        <span class="req-item">{ob.nom}</span>
-                                    {/each}
+                            {#if quest.obstacle}
+                                <div class="quest-obstacle">
+                                    <span class="obstacle-label">Obstacle :</span>
+                                    <span class="obstacle-desc">{quest.obstacle}</span>
                                 </div>
                             {/if}
                             {#if quest.recompense && quest.recompense.length > 0}
@@ -98,6 +88,12 @@
                                     {#each quest.recompense as rew}
                                         <span class="reward-name">🎁 {rew.nom}</span>
                                     {/each}
+                                </div>
+                            {/if}
+                            {#if quest.information}
+                                <div class="quest-info">
+                                    <span class="info-label">Information :</span>
+                                    <span class="info-text">{quest.information}</span>
                                 </div>
                             {/if}
                             <Button variant="primary" onClick={() => onAccept(quest.nom)} className="w-full py-2 text-sm">
@@ -211,8 +207,9 @@
         font-style: italic;
     }
 
-    .quest-requires,
-    .quest-rewards {
+    .quest-obstacle,
+    .quest-rewards,
+    .quest-info {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
@@ -221,29 +218,32 @@
         font-size: 0.8rem;
     }
 
-    .requires-label,
-    .rewards-label {
+    .obstacle-label,
+    .rewards-label,
+    .info-label {
         color: #7a6f5f;
         text-transform: uppercase;
         font-size: 0.65rem;
         letter-spacing: 0.06em;
     }
 
-    .req-item {
-        color: #ef5350;
-        background: rgba(239, 68, 68, 0.1);
-        padding: 2px 8px;
-        border-radius: 100px;
-    }
-
-    .req-item.ok {
-        color: #4ade80;
-        background: rgba(34, 197, 94, 0.12);
+    .obstacle-desc {
+        color: #a09080;
+        font-style: italic;
+        flex: 1;
+        min-width: 0;
     }
 
     .reward-name {
         color: #c5a059;
         background: rgba(197, 160, 89, 0.12);
+        padding: 2px 8px;
+        border-radius: 100px;
+    }
+
+    .info-text {
+        color: #4ade80;
+        background: rgba(34, 197, 94, 0.12);
         padding: 2px 8px;
         border-radius: 100px;
     }

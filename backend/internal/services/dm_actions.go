@@ -481,7 +481,7 @@ func (gm *GameManager) dmRemoveQuest(locationName string, index int) {
 }
 
 func (gm *GameManager) dmAddPlayerQuest(targetPseudo string, quest domain.Quest) {
-	char := gm.getLatestCharacter(targetPseudo)
+	char, isNPC := gm.getQuestTarget(targetPseudo)
 	if char == nil || quest.Nom == "" {
 		return
 	}
@@ -492,19 +492,62 @@ func (gm *GameManager) dmAddPlayerQuest(targetPseudo string, quest domain.Quest)
 		}
 	}
 	char.Quests = append(char.Quests, quest)
-	gm.saveCharacterState(targetPseudo, char)
-	gm.chat("📜 Le MDJ a confié la quête « %s » à %s.", quest.Nom, char.Stats.Nom)
+	if isNPC {
+		gm.persistWorld()
+		gm.chat("📜 Le MDJ a confié la quête « %s » à %s.", quest.Nom, char.Stats.Nom)
+	} else {
+		gm.saveCharacterState(targetPseudo, char)
+		gm.chat("📜 Le MDJ a confié la quête « %s » à %s.", quest.Nom, char.Stats.Nom)
+	}
 	gm.NotifyChange()
 }
 
 func (gm *GameManager) dmRemovePlayerQuest(targetPseudo string, index int) {
-	char := gm.getLatestCharacter(targetPseudo)
+	char, isNPC := gm.getQuestTarget(targetPseudo)
 	if char == nil || index < 0 || index >= len(char.Quests) {
 		return
 	}
 	removed := char.Quests[index]
 	char.Quests = append(char.Quests[:index], char.Quests[index+1:]...)
-	gm.saveCharacterState(targetPseudo, char)
+	if isNPC {
+		gm.persistWorld()
+	} else {
+		gm.saveCharacterState(targetPseudo, char)
+	}
 	gm.chat("🚫 Le MDJ a retiré la quête « %s » de %s.", removed.Nom, char.Stats.Nom)
+	gm.NotifyChange()
+}
+
+func (gm *GameManager) dmEditQuest(locationName string, index int, quest domain.Quest) {
+	if quest.Nom == "" {
+		return
+	}
+	for i := range gm.World.Locations {
+		if gm.World.Locations[i].Nom == locationName {
+			loc := &gm.World.Locations[i]
+			if index < 0 || index >= len(loc.Quests) {
+				return
+			}
+			loc.Quests[index] = quest
+			gm.chat("✏️ Le MDJ a modifié la quête « %s » à %s.", quest.Nom, locationName)
+			gm.persistWorld()
+			gm.NotifyChange()
+			return
+		}
+	}
+}
+
+func (gm *GameManager) dmEditPlayerQuest(targetPseudo string, index int, quest domain.Quest) {
+	char, isNPC := gm.getQuestTarget(targetPseudo)
+	if char == nil || quest.Nom == "" || index < 0 || index >= len(char.Quests) {
+		return
+	}
+	char.Quests[index] = quest
+	if isNPC {
+		gm.persistWorld()
+	} else {
+		gm.saveCharacterState(targetPseudo, char)
+	}
+	gm.chat("✏️ Le MDJ a modifié la quête « %s » de %s.", quest.Nom, char.Stats.Nom)
 	gm.NotifyChange()
 }

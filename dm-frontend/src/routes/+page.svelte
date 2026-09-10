@@ -6,6 +6,7 @@
     import InventoryEditor from '../lib/components/InventoryEditor.svelte';
     import SpellEditor from '../lib/components/SpellEditor.svelte';
     import QuestEditor from '../lib/components/QuestEditor.svelte';
+    import QuestManager from '../lib/components/QuestManager.svelte';
     import LocationManager from '../lib/components/LocationManager.svelte';
     import NPCManager from '../lib/components/NPCManager.svelte';
     import ChatBox from '../lib/components/ChatBox.svelte';
@@ -238,6 +239,7 @@
                                 quests={selectedData.quests || []}
                                 onAdd={(quest) => dmAction('dm_add_quest_player', { target_player: selected, quest })}
                                 onRemove={(index) => dmAction('dm_remove_quest_player', { target_player: selected, quest_index: index })}
+                                onUpdate={(index, quest) => dmAction('dm_edit_quest_player', { target_player: selected, quest_index: index, quest })}
                             />
                         </div>
                     {:else}
@@ -250,6 +252,13 @@
 
                 <!-- Right: World + Chat -->
                 <aside class="world-panel">
+                    <QuestManager
+                        locations={$dmState.locations}
+                        onAdd={(loc, quest) => dmAction('dm_add_quest', { destination: loc, quest })}
+                        onEdit={(loc, idx, quest) => dmAction('dm_edit_quest', { destination: loc, quest_index: idx, quest })}
+                        onRemove={(loc, idx) => dmAction('dm_remove_quest', { destination: loc, quest_index: idx })}
+                    />
+
                     <LocationManager
                         locations={$dmState.locations}
                         players={$dmState.players}
@@ -257,6 +266,7 @@
                         onRemoveItem={(loc, idx) => dmAction('dm_teleport_item_remove', { destination: loc, item_index: idx })}
                         onEditLocation={(oldName, newName, newBg) => dmAction('dm_edit_location', { destination: oldName, new_name: newName, location_bg: newBg })}
                         onAddQuest={(loc, quest) => dmAction('dm_add_quest', { destination: loc, quest })}
+                        onEditQuest={(loc, idx, quest) => dmAction('dm_edit_quest', { destination: loc, quest_index: idx, quest })}
                         onRemoveQuest={(loc, idx) => dmAction('dm_remove_quest', { destination: loc, quest_index: idx })}
                     />
 

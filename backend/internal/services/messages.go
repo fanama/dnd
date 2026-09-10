@@ -41,6 +41,7 @@ type NPCEntry struct {
 	Sorts      []domain.Sort    `json:"sorts"`
 	Inventaire []domain.Item    `json:"inventaire"`
 	Equipement domain.Equipment `json:"equipement"`
+	Quests     []domain.Quest   `json:"quests"`
 	Stats      domain.Stats     `json:"stats"`
 	IsNPC      bool             `json:"is_npc"`
 }

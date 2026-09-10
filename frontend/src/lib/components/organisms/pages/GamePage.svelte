@@ -296,7 +296,6 @@
             <QuestPanel
                 myQuests={myStatsData?.quests || []}
                 locationQuests={gameState.currentLocationQuests || []}
-                inventory={myStatsData?.inventaire || []}
                 onAccept={onAcceptQuest}
                 onComplete={onCompleteQuest}
             />

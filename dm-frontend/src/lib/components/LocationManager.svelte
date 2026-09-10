@@ -5,6 +5,7 @@
     export let onRemoveItem = (location, index) => {};
     export let onEditLocation = (oldName, newName, newBg) => {};
     export let onAddQuest = (location, quest) => {};
+    export let onEditQuest = (location, index, quest) => {};
     export let onRemoveQuest = (location, index) => {};
 
     let expandedLoc = null;
@@ -13,8 +14,9 @@
     let editName = '';
     let editBg = '';
     let editingLoc = null;
-    let newQuest = { nom: '', objectif: '', obstacle: '', recompense: '' };
+    let newQuest = { nom: '', objectif: '', obstacle: '', recompenseItems: '', information: '' };
     let showQuestFor = null;
+    let editingQuest = null;
 
     const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 
@@ -80,14 +82,42 @@
 
     function addQuest(loc) {
         if (!newQuest.nom.trim()) return;
-        onAddQuest(loc, {
+        const quest = {
             nom: newQuest.nom.trim(),
             objectif: newQuest.objectif.trim(),
-            obstacle: parseItems(newQuest.obstacle),
-            recompense: parseItems(newQuest.recompense),
-        });
-        newQuest = { nom: '', objectif: '', obstacle: '', recompense: '' };
+            obstacle: newQuest.obstacle.trim(),
+            recompense: parseItems(newQuest.recompenseItems),
+            information: newQuest.information.trim(),
+        };
+        if (editingQuest) {
+            onEditQuest(loc, editingQuest.index, quest);
+        } else {
+            onAddQuest(loc, quest);
+        }
+        newQuest = { nom: '', objectif: '', obstacle: '', recompenseItems: '', information: '' };
+        editingQuest = null;
         showQuestFor = null;
+    }
+
+    function startQuestEdit(loc, index) {
+        const locData = locations.find((l) => l.nom === loc);
+        const q = locData && locData.quests ? locData.quests[index] : null;
+        if (!q) return;
+        editingQuest = { loc, index };
+        newQuest = {
+            nom: q.nom || '',
+            objectif: q.objectif || '',
+            obstacle: (typeof q.obstacle === 'string' ? q.obstacle : '') || '',
+            recompenseItems: (q.recompense || []).map((i) => i.nom).join(', '),
+            information: q.information || '',
+        };
+        showQuestFor = loc;
+    }
+
+    function cancelQuestForm() {
+        showQuestFor = null;
+        newQuest = { nom: '', objectif: '', obstacle: '', recompenseItems: '', information: '' };
+        editingQuest = null;
     }
 
     function locIcon(nom) {
@@ -233,12 +263,19 @@
                                 <div class="quest-info">
                                     <span class="item-name">{quest.nom}</span>
                                     {#if quest.objectif}<span class="quest-objectif">{quest.objectif}</span>{/if}
+                                    {#if quest.obstacle}
+                                        <span class="quest-obstacle">⛔ {quest.obstacle}</span>
+                                    {/if}
                                     {#if quest.recompense && quest.recompense.length > 0}
                                         <span class="quest-rewards">
                                             🎁 {quest.recompense.map((r) => r.nom).join(', ')}
                                         </span>
                                     {/if}
+                                    {#if quest.information}
+                                        <span class="quest-information">📜 {quest.information}</span>
+                                    {/if}
                                 </div>
+                                <button class="btn-edit" on:click={() => startQuestEdit(loc.nom, qi)}>✏️</button>
                                 <button class="btn-remove" on:click={() => onRemoveQuest(loc.nom, qi)}>✕</button>
                             </div>
                         {/each}
@@ -247,11 +284,14 @@
                             <div class="add-form fade-in">
                                 <input class="form-input" bind:value={newQuest.nom} placeholder="Nom de la quête" />
                                 <input class="form-input" bind:value={newQuest.objectif} placeholder="Objectif" />
-                                <input class="form-input" bind:value={newQuest.obstacle} placeholder="Requis (objets, séparés par des virgules)" />
-                                <input class="form-input" bind:value={newQuest.recompense} placeholder="Récompenses (objets, séparés par des virgules)" />
+                                <textarea class="form-input quest-textarea" bind:value={newQuest.obstacle} placeholder="Obstacle (description)"></textarea>
+                                <input class="form-input" bind:value={newQuest.recompenseItems} placeholder="Récompenses (objets, séparés par des virgules)" />
+                                <textarea class="form-input quest-textarea" bind:value={newQuest.information} placeholder="Information révélée à la complétion"></textarea>
                                 <div class="form-actions">
-                                    <button class="btn-cancel" on:click={() => showQuestFor = null}>Annuler</button>
-                                    <button class="btn-add" on:click={() => addQuest(loc.nom)}>Ajouter</button>
+                                    <button class="btn-cancel" on:click={cancelQuestForm}>Annuler</button>
+                                    <button class="btn-add" on:click={() => addQuest(loc.nom)}>
+                                        {editingQuest ? '💾 Enregistrer' : 'Ajouter'}
+                                    </button>
                                 </div>
                             </div>
                         {:else}
@@ -460,6 +500,45 @@
         font-family: 'Alegreya', serif;
         color: #c5a059;
         font-size: 0.7rem;
+    }
+
+    .quest-obstacle {
+        font-family: 'Alegreya', serif;
+        color: #7a6f5f;
+        font-size: 0.7rem;
+        font-style: italic;
+    }
+
+    .quest-information {
+        font-family: 'Alegreya', serif;
+        color: #4ade80;
+        font-size: 0.7rem;
+    }
+
+    .btn-edit {
+        width: 20px;
+        height: 20px;
+        background: rgba(139, 92, 246, 0.15);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        border-radius: 4px;
+        color: #c4b5fd;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.6rem;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    .btn-edit:hover {
+        background: rgba(139, 92, 246, 0.35);
+    }
+
+    .form-input.quest-textarea {
+        min-height: 48px;
+        resize: vertical;
+        font-family: 'Alegreya', serif;
     }
 
     .btn-remove {
