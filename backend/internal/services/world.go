@@ -90,6 +90,16 @@ func (gm *GameManager) loadOrSeedWorld() {
 			json.Unmarshal([]byte(locsJSON), &locs) == nil && locs != nil {
 			gm.World.NPCs = npcs
 			gm.World.Locations = locs
+			cleaned := false
+			for name, n := range gm.World.NPCs {
+				if n.CurrentPV <= 0 {
+					delete(gm.World.NPCs, name)
+					cleaned = true
+				}
+			}
+			if cleaned {
+				gm.persistWorld()
+			}
 			return
 		}
 	}

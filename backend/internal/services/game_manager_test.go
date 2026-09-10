@@ -434,6 +434,9 @@ func TestActionAttackKillsMOBDropsInventoryAsLoot(t *testing.T) {
 	if len(mob.Inventaire) != 0 {
 		t.Errorf("MOB mort garde son inventaire : %v", mob.Inventaire)
 	}
+	if _, still := gm.World.NPCs["Rat Sinistre"]; still {
+		t.Error("MOB mort devrait être retiré du monde")
+	}
 	loc := gm.findLocation("Donjon")
 	if loc == nil || !gm.hasItem(loc.Objects, "Morceau de Viande") {
 		t.Errorf("le butin devrait être au sol à Donjon : %+v", loc)

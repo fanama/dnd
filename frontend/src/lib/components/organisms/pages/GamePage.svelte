@@ -342,7 +342,7 @@
                                 <strong class="player-name">{v.nom}</strong>
                                 <span class="player-location">{v.classe}</span>
                             </div>
-                            <HPBar current={v.pv} max={v.max_pv} />
+                            <HPBar current={v.pv} max={v.max_pv} showNumbers={false} />
                             <Button variant="danger" onClick={() => onHit(p)} className="w-full py-2 text-sm">
                                 ⚔️ Attaquer
                             </Button>
@@ -377,12 +377,10 @@
                                         {/if}
                                     </span>
                                 </div>
-                                <HPBar current={npc.pv} max={npc.max_pv} />
-                                {#if npc.mobType}
-                                    <Button variant={npc.mobType === 'boss' ? 'danger' : 'warning'} onClick={() => onHit(npc.nom)} className="w-full py-2 text-sm">
-                                        ⚔️ Attaquer
-                                    </Button>
-                                {/if}
+                                <HPBar current={npc.pv} max={npc.max_pv} showNumbers={false} />
+                                <Button variant={npc.mobType === 'boss' ? 'danger' : npc.mobType === 'minion' ? 'warning' : 'danger'} onClick={() => onHit(npc.nom)} className="w-full py-2 text-sm">
+                                    ⚔️ Attaquer
+                                </Button>
                             </div>
                         {/each}
                     </div>
