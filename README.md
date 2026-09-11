@@ -185,6 +185,9 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 
 ## Game Engine Rules
 
+> **Single source of truth:** toutes les règles ci-dessous sont appliquées **uniquement par le serveur Go**.
+> Après chaque mutation, le backend pré-calcule et pousse les statistiques de combat dérivées de chaque personnage (héros et PNJ/MOB) via le champ `combat` du message `sync` : `ac`, `attack_mod`, `damage_mod`, `damage_dice` (ex. `1d8+3`), `hit_dice`, `weapon_name`, `ranged` (avec `max_pv`, déjà présent). Les frontends (joueur **et** MDJ) reçoivent aussi `mobType` (`boss` / `minion`, vide pour un PNJ) pour tout PNJ/MOB. Les Frontends (joueur **et** MDJ) affichent ces valeurs sans jamais recalculer de formule — la seule exception est le **wizard de création de personnage** (aucun état serveur n'existe encore), dont l'aperçu est une prédiction affichée comme telle.
+
 * **Max HP**: `max(Dé de Vie) + modificateur(Constitution)` — Dés de Vie par classe : Guerrier d10, Clerc/Barde/Voleur/Ranger d8, Magicien d6. Minimum 1 PV
 * **Modifier**: floor((stat - 10) / 2) — e.g. stat 10 → +0, 12 → +1, 18 → +4
 * **AC (Classe d'Armure)**: 10 + mod(Vitesse) + BonusArmure (armure équipée)
@@ -198,6 +201,7 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 * **Combat**: touche si 20 naturel ou jet ≥ CA
 * **Cibles des sorts**: un héros du même lieu (`cible` = pseudo), un PNJ/MOB du même lieu (`cible` = nom du PNJ/MOB), ou soi-même (`cible` = son propre pseudo) ; un PNJ/MOB réduit à 0 PV est mis à terre (reste à 0 jusqu'à ce que le MDJ le ranime)
 * **MOB (boss & minions)**: le MDJ peut spawner des monstres « à la volée » via `dm_add_npc` avec `mob_type` (`boss` ou `minion`) — un boss spawn en unité unique (30 PV par défaut, stats Force 18 / Constitution 16...), les minions en `count` exemplaires nommés `Nom #N` (8 PV par défaut) ; le MDJ peut surcharger stats et PV à la création. Les stats/PV par défaut sont utilisés si rien n'est fourni. Un PNJ créé sans PV explicite utilise la formule D&D standard (Dé de Vie + mod CON)
+* **PV des PNJ normalisés**: pour tout PNJ/MOB, le PV choisi par le MDJ (à la création ou à l'édition) devient son **PV maximal** : la barre de vie est pleine à la création (`pv == max_pv`). Seule l'équipe des héros utilise la formule D&D dérivée (Dé de Vie + mod Constitution). Les PNJ hérités d'anciennes sauvegardes sont normalisés au chargement (PV courant pris comme plafond)
 * **Attaque physique sur MOB**: l'action `attack` cible un autre héros, un PNJ **ou un MOB** du même lieu (même formule arme/mêlée/à distance)
 * **Butin à la mort**: quand un MOB (ou PNJ) tombe à 0 PV, son inventaire est déposé au sol du lieu (objet récupérable par les héros via `loot`)
 * **Équipement**: actions `equip_item` / `unequip_item` (slots `weapon`/`armor`) gérées par le serveur et persistées en base ; le personnage démarre avec son arme de classe équipée

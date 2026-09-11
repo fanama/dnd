@@ -39,6 +39,16 @@ export interface Quest {
     information?: string;
 }
 
+export interface DerivedCombat {
+    ac: number;
+    attack_mod: number;
+    damage_mod: number;
+    damage_dice: string;
+    hit_dice: number;
+    weapon_name: string;
+    ranged: boolean;
+}
+
 export interface PlayerStats {
     nom: string;
     lieu: string;
@@ -58,6 +68,7 @@ export interface PlayerStats {
     sorts: Sort[];
     equipement: Equipment;
     quests: Quest[];
+    combat: DerivedCombat;
 }
 
 export interface Location {
@@ -95,46 +106,6 @@ export function abilityModifier(stat: number): number {
     return Math.floor(((stat || 10) - 10) / 2);
 }
 
-export function normalizeName(name: string): string {
-    return (name || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
-}
-
-export interface WeaponInfo {
-    sides: number;
-    ranged: boolean;
-    label: string;
-}
-
-function parseDiceSides(s: string): number {
-    let t = (s || '').trim().toLowerCase();
-    const i = t.indexOf('d');
-    if (i >= 0) t = t.slice(i + 1);
-    const n = parseInt(t, 10);
-    return Number.isFinite(n) && n >= 2 ? n : 0;
-}
-
-export function getWeaponInfo(item: Item | null): WeaponInfo {
-    if (!item) return { sides: 2, ranged: false, label: '1d2' };
-    const n = normalizeName(item.nom);
-    let sides: number;
-    if (n.includes('dague')) sides = 4;
-    else if (n.includes('arbalete') || n.includes('carquois')) sides = 8;
-    else if (n.includes('arc')) sides = 8;
-    else if (n.includes('epee')) sides = 6;
-    else sides = 6;
-    const ranged = n.includes('arc') || n.includes('arbalete') || n.includes('carquois');
-    const custom = parseDiceSides(item.desDegats);
-    if (custom) sides = custom;
-    return { sides, ranged, label: `1d${sides}` };
-}
-
-function signed(v: number): string {
-    return v > 0 ? `+${v}` : `${v}`;
-}
-
 export interface DerivedStats {
     maxPv: number;
     ac: number;
@@ -145,40 +116,29 @@ export interface DerivedStats {
     ranged: boolean;
 }
 
-function hitDiceSides(classe: string): number {
-    switch (classe) {
-        case 'Magicien': return 6;
-        case 'Voleur':
-        case 'Clerc':
-        case 'Barde':
-        case 'Ranger': return 8;
-        default: return 10; // Guerrier
-    }
-}
+const DEFAULT_DERIVED_STATS: DerivedStats = {
+    maxPv: 10,
+    ac: 10,
+    attackMod: 0,
+    damageMod: 0,
+    damageDice: '1d2',
+    weaponName: 'Mains nues',
+    ranged: false,
+};
 
-export function getDerivedStats(s: PlayerStats | undefined): DerivedStats {
-    if (!s || !s.stats) {
-        return { maxPv: 10, ac: 10, attackMod: 0, damageMod: 0, damageDice: '1d2', weaponName: 'Mains nues', ranged: false };
-    }
-    const con = s.stats.constitution || 10;
-    const conMod = abilityModifier(con);
-    const hd = hitDiceSides(s.classe || 'Guerrier');
-    const maxPv = Math.max(1, hd + conMod);
-    const weapon = s.equipement?.arme || null;
-    const armor = s.equipement?.armure || null;
-    const weaponInfo = getWeaponInfo(weapon);
-    const attackStat = weaponInfo.ranged ? (s.stats.vitesse || 10) : (s.stats.force || 10);
-    const attackMod = abilityModifier(attackStat) + (weapon?.bonusDegats || 0);
-    const damageMod = abilityModifier(attackStat);
-    const ac = 10 + abilityModifier(s.stats.vitesse || 10) + (armor?.bonusArmure || 0);
+// serverDerivedStats maps the combat statistics precomputed by the backend
+// (single source of truth) onto the DerivedStats shape used by the UI.
+function serverDerivedStats(s: PlayerStats | undefined): DerivedStats {
+    if (!s) return DEFAULT_DERIVED_STATS;
+    const c = s.combat;
     return {
-        maxPv,
-        ac,
-        attackMod,
-        damageMod,
-        damageDice: `${weaponInfo.label}${signed(damageMod)}`,
-        weaponName: weapon?.nom || 'Mains nues',
-        ranged: weaponInfo.ranged
+        maxPv: s.max_pv || 10,
+        ac: c?.ac ?? 10,
+        attackMod: c?.attack_mod ?? 0,
+        damageMod: c?.damage_mod ?? 0,
+        damageDice: c?.damage_dice || '1d2',
+        weaponName: c?.weapon_name || 'Mains nues',
+        ranged: c?.ranged ?? false,
     };
 }
 
@@ -211,7 +171,7 @@ export const myStats = derived(gameState, ($gs) => {
 });
 
 export const myDerivedStats = derived(myStats, ($ms) => {
-    return getDerivedStats($ms);
+    return serverDerivedStats($ms);
 });
 
 let socket: WebSocket | undefined;

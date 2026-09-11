@@ -211,6 +211,7 @@ func (gm *GameManager) NotifyChange() {
 				Equipement: char.Equipement,
 				Quests:     char.Quests,
 				Stats:      char.Stats,
+				Combat:     computeDerivedCombat(char),
 				Role:       gm.DMs[pseudo],
 			}
 		}
@@ -220,7 +221,7 @@ func (gm *GameManager) NotifyChange() {
 		npcData[name] = NPCEntry{
 			Nom:        npc.Stats.Nom,
 			PV:         npc.CurrentPV,
-			MaxPV:      npc.Stats.CalculateLifePoints(),
+			MaxPV:      npcMaxPV(npc),
 			Classe:     npc.Stats.Background,
 			Lieu:       npc.Lieu,
 			Alignement: npc.Alignement,
@@ -229,6 +230,8 @@ func (gm *GameManager) NotifyChange() {
 			Equipement: npc.Equipement,
 			Quests:     npc.Quests,
 			Stats:      npc.Stats,
+			Combat:     computeDerivedCombat(npc),
+			MobType:    npc.MobType,
 			IsNPC:      true,
 		}
 	}

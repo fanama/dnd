@@ -117,6 +117,7 @@ type Character struct {
 	Alignement string    `json:"alignement"`
 	Stats      Stats     `json:"stats"`
 	CurrentPV  float64   `json:"pv"`
+	MaxPV      float64   `json:"max_pv,omitempty"`
 	Inventaire []Item    `json:"inventaire"`
 	Sorts      []Sort    `json:"sorts"`
 	Equipement Equipment `json:"equipement"`

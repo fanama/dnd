@@ -49,6 +49,16 @@ export interface Quest {
     information?: string;
 }
 
+export interface DerivedCombat {
+    ac: number;
+    attack_mod: number;
+    damage_mod: number;
+    damage_dice: string;
+    hit_dice: number;
+    weapon_name: string;
+    ranged: boolean;
+}
+
 export interface PlayerData {
     nom: string;
     lieu: string;
@@ -61,6 +71,7 @@ export interface PlayerData {
     sorts: Sort[];
     equipement: Equipment;
     quests?: Quest[];
+    combat?: DerivedCombat;
     role: boolean;
     is_npc?: boolean;
     mobType?: string;

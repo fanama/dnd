@@ -295,6 +295,7 @@ func (gm *GameManager) actionAttack(attacker *domain.Character, targetPseudo str
 	if target := gm.getTargetCharacter(targetPseudo); target != nil && attacker.Lieu == target.Lieu {
 		gm.chat("%s", resolvePhysicalAttack(attacker, target))
 		gm.checkDeath(target)
+		gm.saveCharacterState(targetPseudo, target)
 		return
 	}
 

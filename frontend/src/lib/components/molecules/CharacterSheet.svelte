@@ -5,7 +5,7 @@
     export let stats = {};
     export let derivedStats = { maxPv: 100, ac: 10, attackMod: 0, damageDice: '1d2', weaponName: 'Mains nues' };
 
-    $: maxPv = derivedStats?.maxPv || (stats.stats?.constitution || 10) * 10;
+    $: maxPv = derivedStats?.maxPv || 10;
 
     $: statList = [
         { label: 'Force', key: 'force', val: stats.stats?.force, icon: '💪', desc: 'Attaque (mêlée)' },

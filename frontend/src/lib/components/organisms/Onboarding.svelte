@@ -21,6 +21,18 @@
     };
     const BONUS_POINTS = 4;
 
+    function hitDiceSides(classe) {
+        switch (classe) {
+            case 'Magicien': return 6;
+            case 'Voleur':
+            case 'Clerc':
+            case 'Barde':
+            case 'Ranger': return 8;
+            case 'Guerrier':
+            default: return 10;
+        }
+    }
+
     const classes = {
         Guerrier: {
             icon: '🛡️',
@@ -84,7 +96,7 @@
         acc[k] = (klass.base[k] || 10) + allocation[k];
         return acc;
     }, {});
-    $: maxPv = Math.floor((finalStats.constitution || 10) * 10);
+    $: maxPv = Math.max(1, hitDiceSides(className) + Math.floor(((finalStats.constitution || 10) - 10) / 2));
     $: canGoNext = (step === 1) || (step === 2 && charName.trim().length >= 2);
     $: bonusMod = (v) => {
         const m = Math.floor(((v || 10) - 10) / 2);

@@ -1,10 +1,13 @@
 package services
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"dnd-backend/internal/domain"
+	"dnd-backend/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -353,6 +356,9 @@ func TestDmAddMobSpawnsBossAndMinions(t *testing.T) {
 	if boss.MobType != "boss" || boss.Stats.Force != 18 || boss.CurrentPV != 30 {
 		t.Errorf("boss = mobType:%q force:%v pv:%v, want mobType:boss force:18 pv:30", boss.MobType, boss.Stats.Force, boss.CurrentPV)
 	}
+	if boss.MaxPV != 30 {
+		t.Errorf("boss MaxPV = %v, want 30 (normalisé)", boss.MaxPV)
+	}
 
 	// Minions: 3 copies with suffixed names, default preset stats + 8 PV.
 	gm.dmAddNPC("Goblin", "Donjon", 0, "", domain.Stats{}, "minion", 3)
@@ -364,6 +370,9 @@ func TestDmAddMobSpawnsBossAndMinions(t *testing.T) {
 		if npc.MobType != "minion" || npc.CurrentPV != 8 {
 			t.Errorf("%s = mobType:%q pv:%v, want mobType:minion pv:8", name, npc.MobType, npc.CurrentPV)
 		}
+		if npc.MaxPV != 8 {
+			t.Errorf("%s MaxPV = %v, want 8 (normalisé)", name, npc.MaxPV)
+		}
 	}
 
 	// Regular PNJ keeps its previous behavior (D&D HD formula PV, no mob type).
@@ -371,6 +380,9 @@ func TestDmAddMobSpawnsBossAndMinions(t *testing.T) {
 	pnj := gm.World.NPCs["Boby"]
 	if pnj == nil || pnj.MobType != "" || pnj.CurrentPV != 10 {
 		t.Errorf("PNJ Boby = %+v, want mobType empty and 10 PV (d10 + CON mod)", pnj)
+	}
+	if pnj.MaxPV != 10 {
+		t.Errorf("PNJ Boby MaxPV = %v, want 10 (normalisé)", pnj.MaxPV)
 	}
 }
 
@@ -459,6 +471,136 @@ func TestDmRemoveNPCsBulk(t *testing.T) {
 	}
 	if _, ok := gm.World.NPCs["Goblin #2"]; !ok {
 		t.Errorf("Goblin #2 devrait rester (non sélectionné)")
+	}
+}
+
+func TestAttackDamagePersistedOnTarget(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "game.db")
+	repo1, err := repository.NewSQLiteRepository(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gm := NewGameManager(repo1)
+
+	ceasar := newTestCharacter("César", domain.Stats{Force: 15, Vitesse: 10}, 100)
+	ceasar.Stats.Nom = "César"
+	ceasar.Lieu = "Taverne"
+	brutus := newTestCharacter("Brutus", domain.Stats{Vitesse: 10}, 50)
+	brutus.Stats.Nom = "Brutus"
+	brutus.Lieu = "Taverne"
+
+	gm.World.Players["ceasar"] = &domain.Player{Pseudo: "ceasar", Characters: []*domain.Character{ceasar}}
+	gm.World.Players["brutus"] = &domain.Player{Pseudo: "brutus", Characters: []*domain.Character{brutus}}
+
+	gm.saveCharacterState("ceasar", ceasar)
+	gm.saveCharacterState("brutus", brutus)
+
+	ceasar.Equipement.Arme = &domain.Item{Nom: "Épée Longue", BonusDégâts: 3}
+
+	oldRoll := rollD20Fn
+	oldDice := rollDiceFn
+	rollD20Fn = func() int { return 18 }
+	rollDiceFn = func(count, sides int) int { return 1 * count }
+	defer func() { rollD20Fn = oldRoll; rollDiceFn = oldDice }()
+
+	gm.HandleAction("ceasar", Action{Type: "attack", Cible: "brutus"})
+	if brutus.CurrentPV >= 50 {
+		t.Fatalf("target should have taken damage, PV=%v", brutus.CurrentPV)
+	}
+	gm.Close()
+
+	repo2, err := repository.NewSQLiteRepository(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo2.Close()
+	_, _, _, pv, _, _, _, _, _, err := repo2.GetCharacter("brutus")
+	if err != nil {
+		t.Fatalf("target character missing from DB: %v", err)
+	}
+	if int64(pv) >= 50 {
+		t.Errorf("damage not persisted for target: reloaded PV = %d (want < 50)", pv)
+	}
+}
+
+func TestComputeDerivedCombat(t *testing.T) {
+	mêlée := newTestCharacter("Zelda", domain.Stats{Force: 15, Vitesse: 10, Constitution: 12}, 10)
+	mêlée.Stats.Nom = "Zelda"
+	mêlée.Stats.Background = "Guerrier"
+	mêlée.Equipement.Arme = &domain.Item{Nom: "Épée Longue", BonusDégâts: 3}
+	mêlée.Equipement.Armure = &domain.Item{Nom: "Plastron", BonusArmure: 2}
+
+	c := computeDerivedCombat(mêlée)
+	if c.AC != 12 {
+		t.Errorf("AC = %v, want 12 (BaseAC(10) + armure 2)", c.AC)
+	}
+	if c.AttackMod != 5 {
+		t.Errorf("AttackMod = %v, want 5 (+2 force, +3 arme)", c.AttackMod)
+	}
+	if c.DamageMod != 2 {
+		t.Errorf("DamageMod = %v, want 2", c.DamageMod)
+	}
+	if c.DamageDice != "1d6+2" {
+		t.Errorf("DamageDice = %q, want %q", c.DamageDice, "1d6+2")
+	}
+	if c.HitDice != 10 {
+		t.Errorf("HitDice = %v, want 10 (Guerrier)", c.HitDice)
+	}
+	if c.WeaponName != "Épée Longue" || c.Ranged {
+		t.Errorf("WeaponName/Ranged = (%q, %v), want (%q, false)", c.WeaponName, c.Ranged, "Épée Longue")
+	}
+
+	archer := newTestCharacter("Legolas", domain.Stats{Force: 8, Vitesse: 16, Constitution: 12, Background: "Ranger"}, 10)
+	archer.Stats.Nom = "Legolas"
+	archer.Equipement.Arme = &domain.Item{Nom: "Arc Long"}
+
+	c2 := computeDerivedCombat(archer)
+	if c2.Ranged != true {
+		t.Errorf("Arc should be ranged")
+	}
+	if c2.AttackMod != 3 {
+		t.Errorf("Archer AttackMod = %v, want 3 (+3 vitesse)", c2.AttackMod)
+	}
+	if c2.DamageDice != "1d8+3" {
+		t.Errorf("Archer DamageDice = %q, want %q", c2.DamageDice, "1d8+3")
+	}
+	if c2.HitDice != 8 {
+		t.Errorf("Archer HitDice = %v, want 8 (Ranger)", c2.HitDice)
+	}
+
+	nue := newTestCharacter("Bare", domain.Stats{Force: 10, Vitesse: 10, Constitution: 10}, 10)
+	nue.Stats.Nom = "Bare"
+	c3 := computeDerivedCombat(nue)
+	if c3.WeaponName != "Mains nues" || c3.DamageDice != "1d2+0" || c3.AC != 10 {
+		t.Errorf("bare hands combat = %+v", c3)
+	}
+}
+
+func TestNpcEntrySyncCarriesMobTypeAndNormalizedMaxPV(t *testing.T) {
+	npc := &domain.Character{
+		Stats:     domain.Stats{Nom: "Roi Goblin", Background: "Boss", Constitution: 16},
+		CurrentPV: 30,
+		MaxPV:     30,
+		MobType:   "boss",
+	}
+	entry := NPCEntry{
+		Nom:     npc.Stats.Nom,
+		PV:      npc.CurrentPV,
+		MaxPV:   npcMaxPV(npc),
+		Stats:   npc.Stats,
+		Combat:  computeDerivedCombat(npc),
+		MobType: npc.MobType,
+		IsNPC:   true,
+	}
+	if entry.MaxPV != 30 {
+		t.Errorf("MaxPV = %v, want 30 (normalisé, pas 13 dérivé)", entry.MaxPV)
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"mobType":"boss"`) {
+		t.Errorf("sync JSON should carry mobType for the DM frontend: %s", data)
 	}
 }
 

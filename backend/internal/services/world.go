@@ -72,6 +72,7 @@ func (gm *GameManager) seedDefaultNPCs() {
 			Alignement: d.align,
 			Stats:      stats,
 			CurrentPV:  d.pv,
+			MaxPV:      d.pv,
 			Lieu:       d.lieu,
 			Inventaire: d.items,
 			Sorts:      []domain.Sort{},
@@ -92,6 +93,10 @@ func (gm *GameManager) loadOrSeedWorld() {
 			gm.World.Locations = locs
 			cleaned := false
 			for name, n := range gm.World.NPCs {
+				if n.MaxPV <= 0 {
+					n.MaxPV = n.CurrentPV
+					cleaned = true
+				}
 				if n.CurrentPV <= 0 {
 					delete(gm.World.NPCs, name)
 					cleaned = true

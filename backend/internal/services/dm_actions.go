@@ -286,6 +286,7 @@ func (gm *GameManager) dmAddNPC(name, location string, pv float64, align string,
 			Alignement: align,
 			Stats:      base,
 			CurrentPV:  pv,
+			MaxPV:      pv,
 			Lieu:       location,
 			Inventaire: []domain.Item{},
 			Sorts:      []domain.Sort{},
@@ -357,7 +358,10 @@ func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, al
 		npc.Stats.Charisme = stats.Charisme
 		npc.Stats.Savoir = stats.Savoir
 		npc.Stats.Instinct = stats.Instinct
-		npc.CurrentPV = pv
+		if pv > 0 {
+			npc.CurrentPV = pv
+			npc.MaxPV = pv
+		}
 	} else {
 		if stats.Force != 0 {
 			npc.Stats.Force = stats.Force
@@ -379,6 +383,7 @@ func (gm *GameManager) dmEditNPC(name string, stats domain.Stats, pv float64, al
 		}
 		if pv > 0 {
 			npc.CurrentPV = pv
+			npc.MaxPV = pv
 		}
 	}
 	if align != "" {

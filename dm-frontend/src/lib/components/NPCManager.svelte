@@ -18,7 +18,7 @@
     let newNpc = {
         nom: '',
         lieu: 'Taverne',
-        pv: 100,
+        pv: 10,
         alignement: 'Neutre',
         type: 'pnj',
         count: 1,
@@ -30,7 +30,7 @@
     const diceOptions = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 
     function setType(t) {
-        const pv = t === 'boss' ? 300 : t === 'minion' ? 50 : 100;
+        const pv = t === 'boss' ? 30 : t === 'minion' ? 8 : 10;
         newNpc = { ...newNpc, type: t, pv };
     }
 
@@ -44,7 +44,7 @@
             type: newNpc.type,
             count: newNpc.count,
         });
-        newNpc = { ...newNpc, nom: '', pv: 100, count: 1 };
+        newNpc = { ...newNpc, nom: '', pv: 10, count: 1 };
         showAdd = false;
     }
 
