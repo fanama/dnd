@@ -112,7 +112,14 @@ func signed(v float64) string {
 	return fmt.Sprintf("%+.0f", v)
 }
 
-func resolvePhysicalAttack(attacker, target *domain.Character) string {
+// attackResult carries the structured outcome of combat for event emission.
+type attackResult struct {
+	Damage float64
+	IsHit  bool
+	IsCrit bool
+}
+
+func resolvePhysicalAttack(attacker, target *domain.Character) (string, attackResult) {
 	weapon := attacker.Equipement.Arme
 	sides, ranged := weaponInfo(weapon)
 
@@ -138,7 +145,7 @@ func resolvePhysicalAttack(attacker, target *domain.Character) string {
 
 	roll := rollD20Fn()
 	if roll == 1 {
-		return fmt.Sprintf("💨 %s attaque %s avec %s ! [1d20 = 1] ❌ Raté (fumble) !", attacker.Stats.Nom, target.Stats.Nom, weaponName)
+		return fmt.Sprintf("💨 %s attaque %s avec %s ! [1d20 = 1] ❌ Raté (fumble) !", attacker.Stats.Nom, target.Stats.Nom, weaponName), attackResult{}
 	}
 
 	total := float64(roll) + attackMod + magicBonus
@@ -160,13 +167,14 @@ func resolvePhysicalAttack(attacker, target *domain.Character) string {
 		}
 		target.CurrentPV -= dmg
 		return fmt.Sprintf("🎯%s %s attaque %s avec %s ! Jet %s vs CA %.0f → Touché ! Dégâts : [%s%+s%+s = %.0f]. (PV : %.0f)",
-			critMark, attacker.Stats.Nom, target.Stats.Nom, weaponName, rollLabel, ac, dieDesc, signed(dmgMod), signed(magicBonus), dmg, target.CurrentPV)
+			critMark, attacker.Stats.Nom, target.Stats.Nom, weaponName, rollLabel, ac, dieDesc, signed(dmgMod), signed(magicBonus), dmg, target.CurrentPV),
+			attackResult{Damage: dmg, IsHit: true, IsCrit: isCrit}
 	}
 
-	return fmt.Sprintf("❌ %s attaque %s avec %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, target.Stats.Nom, weaponName, rollLabel, ac)
+	return fmt.Sprintf("❌ %s attaque %s avec %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, target.Stats.Nom, weaponName, rollLabel, ac), attackResult{}
 }
 
-func resolveSpellAttack(attacker, target *domain.Character, spell domain.Sort) string {
+func resolveSpellAttack(attacker, target *domain.Character, spell domain.Sort) (string, attackResult) {
 	spellMod := domain.AbilityModifier(attacker.Stats.Savoir)
 	bonus := spell.Bonus
 
@@ -178,7 +186,7 @@ func resolveSpellAttack(attacker, target *domain.Character, spell domain.Sort) s
 
 	roll := rollD20Fn()
 	if roll == 1 {
-		return fmt.Sprintf("🕯️ %s lance %s sur %s ! [1d20 = 1] ❌ Raté !", attacker.Stats.Nom, spell.Nom, target.Stats.Nom)
+		return fmt.Sprintf("🕯️ %s lance %s sur %s ! [1d20 = 1] ❌ Raté !", attacker.Stats.Nom, spell.Nom, target.Stats.Nom), attackResult{}
 	}
 
 	total := float64(roll) + spellMod + bonus
@@ -198,7 +206,8 @@ func resolveSpellAttack(attacker, target *domain.Character, spell domain.Sort) s
 			}
 			target.CurrentPV -= dmg
 			return fmt.Sprintf("🔥%s %s lance %s sur %s ! Jet %s vs CA %.0f → Touché ! Dégâts magiques : %.0f. (PV : %.0f)",
-				critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dmg, target.CurrentPV)
+				critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dmg, target.CurrentPV),
+				attackResult{Damage: dmg, IsHit: true, IsCrit: isCrit}
 		}
 		sides := parseDiceSides(spell.DesDégâts)
 		if sides <= 0 {
@@ -216,10 +225,11 @@ func resolveSpellAttack(attacker, target *domain.Character, spell domain.Sort) s
 		}
 		target.CurrentPV -= dmg
 		return fmt.Sprintf("🔥%s %s lance %s sur %s ! Jet %s vs CA %.0f → Touché ! Dégâts : [%s = %.0f]. (PV : %.0f)",
-			critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dieDesc, dmg, target.CurrentPV)
+			critMark, attacker.Stats.Nom, spellName, target.Stats.Nom, rollLabel, ac, dieDesc, dmg, target.CurrentPV),
+			attackResult{Damage: dmg, IsHit: true, IsCrit: isCrit}
 	}
 
-	return fmt.Sprintf("❌ %s lance %s sur %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, spell.Nom, target.Stats.Nom, rollLabel, ac)
+	return fmt.Sprintf("❌ %s lance %s sur %s ! Jet %s < CA %.0f → Raté !", attacker.Stats.Nom, spell.Nom, target.Stats.Nom, rollLabel, ac), attackResult{}
 }
 
 func applyStatsBuff(stats *domain.Stats, buff domain.SortBuff) (bool, string) {
@@ -293,7 +303,9 @@ func (gm *GameManager) actionUnequip(char *domain.Character, slot string) {
 
 func (gm *GameManager) actionAttack(attacker *domain.Character, targetPseudo string) {
 	if target := gm.getTargetCharacter(targetPseudo); target != nil && attacker.Lieu == target.Lieu {
-		gm.chat("%s", resolvePhysicalAttack(attacker, target))
+		msg, res := resolvePhysicalAttack(attacker, target)
+		gm.chat("%s", msg)
+		gm.emit(GameEvent{Type: "event", Event: "damage", Source: attacker.Stats.Nom, Target: target.Stats.Nom, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
 		gm.checkDeath(target)
 		gm.saveCharacterState(targetPseudo, target)
 		return
@@ -303,8 +315,10 @@ func (gm *GameManager) actionAttack(attacker *domain.Character, targetPseudo str
 	if !ok || attacker.Lieu != npc.Lieu {
 		return
 	}
-	gm.chat("%s", resolvePhysicalAttack(attacker, npc))
-	gm.npcAfterDamage(targetPseudo, npc)
+	msg, res := resolvePhysicalAttack(attacker, npc)
+	gm.chat("%s", msg)
+	gm.emit(GameEvent{Type: "event", Event: "damage", Source: attacker.Stats.Nom, Target: targetPseudo, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
+	gm.npcAfterDamage(targetPseudo, npc, attacker)
 	gm.persistWorld()
 }
 
@@ -319,9 +333,9 @@ func (gm *GameManager) findLocation(name string) *domain.Location {
 }
 
 // npcAfterDamage handles an NPC or MOB that just took damage: clamps PV to 0
-// and, on death, drops its inventory as loot on the ground and removes the
-// dead NPC from the world.
-func (gm *GameManager) npcAfterDamage(name string, npc *domain.Character) {
+// and, on death, awards XP to the killer, drops its inventory as loot on the
+// ground and removes the dead NPC from the world.
+func (gm *GameManager) npcAfterDamage(name string, npc *domain.Character, killer *domain.Character) {
 	if npc.CurrentPV < 0 {
 		npc.CurrentPV = 0
 	}
@@ -333,13 +347,46 @@ func (gm *GameManager) npcAfterDamage(name string, npc *domain.Character) {
 		loc.Objects = append(loc.Objects, npc.Inventaire...)
 		npc.Inventaire = nil
 		gm.chat("☠️ %s est tombé ! Son butin tombe au sol.", npc.Stats.Nom)
+		gm.emit(GameEvent{Type: "event", Event: "death", Source: killer.Stats.Nom, Target: npc.Stats.Nom, LootCount: 1, Text: "Son butin est au sol !"})
 	} else {
 		gm.chat("☠️ %s est tombé !", npc.Stats.Nom)
+		gm.emit(GameEvent{Type: "event", Event: "death", Source: killer.Stats.Nom, Target: npc.Stats.Nom, Text: "Le combat est fini."})
+	}
+	if killer != nil {
+		xp := float64(10)
+		if npc.MobType == "boss" {
+			xp = 50
+		} else if npc.MobType == "minion" {
+			xp = 20
+		}
+		oldLevel := killer.Level()
+		killer.Xp += xp
+		gm.emit(GameEvent{Type: "event", Event: "xp", Target: killer.Stats.Nom, Amount: xp, Text: fmt.Sprintf("+%.0f XP !", xp)})
+		if killer.Level() > oldLevel {
+			gm.chat("🌟 %s passe au niveau %d !", killer.Stats.Nom, killer.Level())
+			gm.emit(GameEvent{Type: "event", Event: "level", Target: killer.Stats.Nom, Level: killer.Level(), Text: fmt.Sprintf("Niveau %d !", killer.Level())})
+		}
 	}
 	delete(gm.World.NPCs, name)
 }
 
 func (gm *GameManager) actionMove(char *domain.Character, dest string) {
+	if dest == "" || dest == char.Lieu {
+		return
+	}
+	if loc := gm.findLocation(char.Lieu); loc != nil && len(loc.Links) > 0 {
+		reachable := false
+		for _, link := range loc.Links {
+			if link == dest {
+				reachable = true
+				break
+			}
+		}
+		if !reachable {
+			gm.chat("🚧 %s ne peut pas aller vers %s depuis %s.", char.Stats.Nom, dest, char.Lieu)
+			return
+		}
+	}
 	char.Lieu = dest
 	gm.chat("🧳 %s s'est déplacé vers : %s.", char.Stats.Nom, dest)
 	gm.spawnLoot(dest)
@@ -388,12 +435,14 @@ func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string,
 			if ok, label := applyStatsBuff(&targetChar.Stats, *spell.Buff); ok {
 				gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
 					char.Stats.Nom, spell.Nom, targetChar.Stats.Nom, spell.Buff.Valeur, label)
+				gm.emit(GameEvent{Type: "event", Event: "buff", Source: char.Stats.Nom, Target: targetChar.Stats.Nom, Amount: spell.Buff.Valeur, Text: label})
 			}
 			gm.saveCharacterState(targetPseudo, targetChar)
 			return
 		}
-		msg := resolveSpellAttack(char, targetChar, spell)
+		msg, res := resolveSpellAttack(char, targetChar, spell)
 		gm.chat("%s", msg)
+		gm.emit(GameEvent{Type: "event", Event: "damage", Source: char.Stats.Nom, Target: targetChar.Stats.Nom, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
 		gm.checkDeath(targetChar)
 		gm.saveCharacterState(targetPseudo, targetChar)
 		return
@@ -407,13 +456,15 @@ func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string,
 		if ok2, label := applyStatsBuff(&npc.Stats, *spell.Buff); ok2 {
 			gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
 				char.Stats.Nom, spell.Nom, npc.Stats.Nom, spell.Buff.Valeur, label)
+			gm.emit(GameEvent{Type: "event", Event: "buff", Source: char.Stats.Nom, Target: npc.Stats.Nom, Amount: spell.Buff.Valeur, Text: label})
 		}
 		gm.persistWorld()
 		return
 	}
-	msg := resolveSpellAttack(char, npc, spell)
+	msg, res := resolveSpellAttack(char, npc, spell)
 	gm.chat("%s", msg)
-	gm.npcAfterDamage(targetPseudo, npc)
+	gm.emit(GameEvent{Type: "event", Event: "damage", Source: char.Stats.Nom, Target: targetPseudo, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
+	gm.npcAfterDamage(targetPseudo, npc, char)
 	gm.persistWorld()
 }
 
@@ -440,6 +491,7 @@ func (gm *GameManager) actionConsume(char *domain.Character, itemName string) {
 		}
 		char.Inventaire = append(char.Inventaire[:itemIdx], char.Inventaire[itemIdx+1:]...)
 		gm.chat("🧪 %s boit une %s et récupère %.0f PV !", char.Stats.Nom, item.Nom, heal)
+		gm.emit(GameEvent{Type: "event", Event: "heal", Target: char.Stats.Nom, Amount: heal, Text: item.Nom})
 	}
 }
 
@@ -448,6 +500,7 @@ func (gm *GameManager) checkDeath(char *domain.Character) {
 		char.CurrentPV = char.Stats.CalculateLifePoints()
 		char.Lieu = "Taverne"
 		gm.chat("😇 %s est tombé au combat mais ressuscite à la Taverne !", char.Stats.Nom)
+		gm.emit(GameEvent{Type: "event", Event: "death", Target: char.Stats.Nom, Text: "Ressuscité à la Taverne !"})
 	}
 }
 
@@ -473,9 +526,14 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 		return
 	}
 	item := currentLocation.Objects[itemIdx]
+	if char.CarriedWeight()+domain.ItemWeight(item) > char.Capacity() {
+		gm.chat("❌ %s est trop chargé pour ramasser %s.", char.Stats.Nom, item.Nom)
+		return
+	}
 	char.Inventaire = append(char.Inventaire, item)
 	currentLocation.Objects = append(currentLocation.Objects[:itemIdx], currentLocation.Objects[itemIdx+1:]...)
 	gm.chat("🎒 %s a ramassé %s dans %s !", char.Stats.Nom, item.Nom, char.Lieu)
+	gm.emit(GameEvent{Type: "event", Event: "loot", Target: char.Stats.Nom, LootCount: 1, Text: item.Nom})
 	gm.persistWorld()
 }
 

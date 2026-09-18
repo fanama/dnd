@@ -21,6 +21,9 @@ func (gm *GameManager) registerActions() {
 		"unequip_item":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionUnequip(c, a.Slot) },
 		"accept_quest":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionAcceptQuest(c, a.QuestName) },
 		"complete_quest": func(gm *GameManager, c *domain.Character, a Action) { gm.actionCompleteQuest(c, a.QuestName) },
+		"chat_msg":       func(gm *GameManager, c *domain.Character, a Action) { gm.playerChat(c, a.Message) },
+		"sell_item":      func(gm *GameManager, c *domain.Character, a Action) { gm.actionSell(c, a.ItemIndex) },
+		"buy_item":       func(gm *GameManager, c *domain.Character, a Action) { gm.actionBuy(c, a.ItemIndex) },
 		"create_character": func(gm *GameManager, c *domain.Character, a Action) {
 			gm.createCharacter(c, a)
 		},
@@ -65,6 +68,11 @@ func (gm *GameManager) registerActions() {
 		},
 		"dm_remove_quest_player": func(gm *GameManager, a Action) {
 			gm.dmRemovePlayerQuest(a.TargetPlayer, a.QuestIndex)
+		},
+		"dm_chat":   func(gm *GameManager, a Action) { gm.dmChat(a.Message) },
+		"dm_edit_or": func(gm *GameManager, a Action) { gm.dmEditOr(a.TargetPlayer, a.Or) },
+		"dm_shop_add": func(gm *GameManager, a Action) {
+			gm.dmShopAdd(a.Destination, a.Item)
 		},
 	}
 }

@@ -5,13 +5,26 @@ import (
 	"fmt"
 
 	"dnd-backend/internal/domain"
-	"github.com/gorilla/websocket"
 )
 
 // ChatMessage is the typed payload for human-readable game events.
 type ChatMessage struct {
 	Type string `json:"type"`
 	Msg  string `json:"msg"`
+}
+
+// GameEvent is a structured combat/log event consumed by the frontends to
+// drive toasts, floating damage numbers, flashes and the death overlay.
+type GameEvent struct {
+	Type     string  `json:"type"`
+	Event    string  `json:"event"` // damage | heal | death | loot | quest | buff | xp | level
+	Source   string  `json:"source,omitempty"`
+	Target   string  `json:"target,omitempty"`
+	Amount   float64 `json:"amount,omitempty"`
+	Crit     bool    `json:"crit,omitempty"`
+	Level    int     `json:"level,omitempty"`
+	LootCount int    `json:"lootCount,omitempty"`
+	Text     string  `json:"text,omitempty"`
 }
 
 // DerivedCombat holds the combat statistics precomputed by the server so that
@@ -72,6 +85,11 @@ type PlayerEntry struct {
 	Stats      domain.Stats     `json:"stats"`
 	Combat     DerivedCombat    `json:"combat"`
 	Role       bool             `json:"role"`
+	Or         float64          `json:"or"`
+	Xp         float64          `json:"xp"`
+	Niveau     int              `json:"niveau"`
+	Encombrement float64        `json:"encombrement"`
+	Capacite     float64        `json:"capacite"`
 }
 
 // NPCEntry is the typed representation of an NPC in a sync.
@@ -116,9 +134,20 @@ type SyncMessage struct {
 
 func (gm *GameManager) broadcast(data interface{}) {
 	msg, _ := json.Marshal(data)
-	for _, conn := range gm.Connections {
-		conn.WriteMessage(websocket.TextMessage, msg)
+	gm.broadcastBytes(msg)
+}
+
+// broadcastBytes delivers raw bytes to every connected client through their
+// per-connection queue. Messages are dropped (never blocking) when a client's
+// queue is full; the next full-state sync self-heals it.
+func (gm *GameManager) broadcastBytes(msg []byte) {
+	for _, c := range gm.Connections {
+		c.enqueue(msg)
 	}
+}
+
+func (gm *GameManager) emit(e GameEvent) {
+	gm.broadcast(e)
 }
 
 func (gm *GameManager) chat(format string, args ...interface{}) {

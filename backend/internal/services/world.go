@@ -9,34 +9,53 @@ import (
 
 func defaultLocations() []domain.Location {
 	return []domain.Location{
-		{Nom: "Taverne", Background: "Ambiance chaleureuse, odeur de biere", Objects: []domain.Item{
-			{Nom: "Vieille Carte", IsConsumable: false, Prix: 10},
-			{Nom: "Chope de Biere", IsConsumable: true, Prix: 5},
-		}},
-		{Nom: "Donjon", Background: "Sombre et humide, murs couverts de mousse", Objects: []domain.Item{
-			{Nom: "Épée Rouillée", IsConsumable: false, BonusDégâts: 2, Prix: 40},
-			{Nom: "Potion de Soin", IsConsumable: true, Prix: 25},
-		}},
-		{Nom: "Foret Enchantee", Background: "Arbres millenaires, lumiere filtreee", Objects: []domain.Item{
-			{Nom: "Herbes Medecinales", IsConsumable: true, Prix: 20},
-			{Nom: "Arc Elfe", IsConsumable: false, BonusDégâts: 4, Prix: 85},
-		}},
-		{Nom: "Montagne Rocheuse", Background: "Pics aceres, vent glacial", Objects: []domain.Item{
-			{Nom: "Haches de Guerre", IsConsumable: false, BonusDégâts: 6, Prix: 130},
-			{Nom: "Gantelets de Fer", IsConsumable: false, BonusArmure: 3, Prix: 90},
-		}},
-		{Nom: "Marais Hante", Background: "Brume epaisse, craquements suspects", Objects: []domain.Item{
-			{Nom: "Potion d'Invisibilite", IsConsumable: true, Prix: 50},
-			{Nom: "Fiole de Venom", IsConsumable: true, Prix: 35},
-		}},
-		{Nom: "Plaine des Conflits", Background: "Champ de bataille, drapeaux dechu", Objects: []domain.Item{
-			{Nom: "Bouclier en Bois", IsConsumable: false, BonusArmure: 2, Prix: 40},
-			{Nom: "Lance Percutante", IsConsumable: false, BonusDégâts: 5, Prix: 95},
-		}},
-		{Nom: "Temple Abandonne", Background: "Piliers brises, ombres dansantes", Objects: []domain.Item{
-			{Nom: "Sceptre Sacre", IsConsumable: false, BonusDégâts: 7, Prix: 160},
-			{Nom: "Parchemin Ancien", IsConsumable: false, Prix: 35},
-		}},
+		{Nom: "Taverne", Background: "Ambiance chaleureuse, odeur de biere", 
+			Links: []string{"Donjon", "Foret Enchantee", "Marais Hante"},
+			Objects: []domain.Item{
+				{Nom: "Vieille Carte", IsConsumable: false, Prix: 10},
+				{Nom: "Chope de Biere", IsConsumable: true, Prix: 5},
+			},
+			Commerce: []domain.Item{
+				{Nom: "Potion de Soin", IsConsumable: true, Prix: 25},
+				{Nom: "Dague d'Argent", IsConsumable: false, BonusDégâts: 3, Prix: 60},
+				{Nom: "Bouclier en Bois", IsConsumable: false, BonusArmure: 2, Prix: 40},
+			}},
+		{Nom: "Donjon", Background: "Sombre et humide, murs couverts de mousse",
+			Links: []string{"Taverne", "Montagne Rocheuse", "Temple Abandonne"},
+			Objects: []domain.Item{
+				{Nom: "Épée Rouillée", IsConsumable: false, BonusDégâts: 2, Prix: 40},
+				{Nom: "Potion de Soin", IsConsumable: true, Prix: 25},
+			}},
+		{Nom: "Foret Enchantee", Background: "Arbres millenaires, lumiere filtreee",
+			Links: []string{"Taverne", "Plaine des Conflits"},
+			Objects: []domain.Item{
+				{Nom: "Herbes Medecinales", IsConsumable: true, Prix: 20},
+				{Nom: "Arc Elfe", IsConsumable: false, BonusDégâts: 4, Prix: 85},
+			}},
+		{Nom: "Montagne Rocheuse", Background: "Pics aceres, vent glacial",
+			Links: []string{"Donjon", "Plaine des Conflits", "Marais Hante"},
+			Objects: []domain.Item{
+				{Nom: "Haches de Guerre", IsConsumable: false, BonusDégâts: 6, Prix: 130},
+				{Nom: "Gantelets de Fer", IsConsumable: false, BonusArmure: 3, Prix: 90},
+			}},
+		{Nom: "Marais Hante", Background: "Brume epaisse, craquements suspects",
+			Links: []string{"Taverne", "Montagne Rocheuse", "Temple Abandonne"},
+			Objects: []domain.Item{
+				{Nom: "Potion d'Invisibilite", IsConsumable: true, Prix: 50},
+				{Nom: "Fiole de Venom", IsConsumable: true, Prix: 35},
+			}},
+		{Nom: "Plaine des Conflits", Background: "Champ de bataille, drapeaux dechu",
+			Links: []string{"Foret Enchantee", "Montagne Rocheuse"},
+			Objects: []domain.Item{
+				{Nom: "Bouclier en Bois", IsConsumable: false, BonusArmure: 2, Prix: 40},
+				{Nom: "Lance Percutante", IsConsumable: false, BonusDégâts: 5, Prix: 95},
+			}},
+		{Nom: "Temple Abandonne", Background: "Piliers brises, ombres dansantes",
+			Links: []string{"Donjon", "Marais Hante"},
+			Objects: []domain.Item{
+				{Nom: "Sceptre Sacre", IsConsumable: false, BonusDégâts: 7, Prix: 160},
+				{Nom: "Parchemin Ancien", IsConsumable: false, Prix: 35},
+			}},
 	}
 }
 

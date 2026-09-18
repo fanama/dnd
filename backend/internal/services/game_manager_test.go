@@ -86,7 +86,7 @@ func TestResolvePhysicalAttackMissOnLowRoll(t *testing.T) {
 	target.Stats.Nom = "Goblin"
 	attacker.Stats.Nom = "Aragorn"
 
-	msg := resolvePhysicalAttack(attacker, target)
+	msg, _ := resolvePhysicalAttack(attacker, target)
 	if target.CurrentPV != 50 {
 		t.Errorf("PV should be unchanged on miss, got %v", target.CurrentPV)
 	}
@@ -106,7 +106,7 @@ func TestResolvePhysicalAttackHitOnACReached(t *testing.T) {
 	attacker.Stats.Nom = "Aragorn"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolvePhysicalAttack(attacker, target)
+	msg, _ := resolvePhysicalAttack(attacker, target)
 	if target.CurrentPV != 47 {
 		t.Errorf("PV = %v, want 47 (3 dmg)", target.CurrentPV)
 	}
@@ -126,7 +126,7 @@ func TestResolvePhysicalAttackCriticalNatural20(t *testing.T) {
 	attacker.Stats.Nom = "Aragorn"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolvePhysicalAttack(attacker, target)
+	msg, _ := resolvePhysicalAttack(attacker, target)
 	// Even against AC 14, nat 20 always hits. Damage = 2d2(4) + 4 = 8.
 	if target.CurrentPV != 42 {
 		t.Errorf("PV = %v, want 42 (8 dmg)", target.CurrentPV)
@@ -144,7 +144,7 @@ func TestResolvePhysicalAttackNat1AlwaysMisses(t *testing.T) {
 	attacker.Stats.Nom = "Aragorn"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolvePhysicalAttack(attacker, target)
+	msg, _ := resolvePhysicalAttack(attacker, target)
 	if target.CurrentPV != 50 {
 		t.Errorf("PV = %v, want 50 (nat 1 always misses)", target.CurrentPV)
 	}
@@ -164,7 +164,7 @@ func TestResolvePhysicalAttackMinDamageOne(t *testing.T) {
 	attacker.Stats.Nom = "Faible"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolvePhysicalAttack(attacker, target)
+	msg, _ := resolvePhysicalAttack(attacker, target)
 	if target.CurrentPV != 49 {
 		t.Errorf("PV = %v, want 49 (min 1 dmg)", target.CurrentPV)
 	}
@@ -181,7 +181,7 @@ func TestResolveSpellAttackMiss(t *testing.T) {
 	attacker.Stats.Nom = "Magicien"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolveSpellAttack(attacker, target, domain.Sort{Nom: "Boule de Feu"})
+	msg, _ := resolveSpellAttack(attacker, target, domain.Sort{Nom: "Boule de Feu"})
 	if target.CurrentPV != 50 {
 		t.Errorf("PV = %v, want 50", target.CurrentPV)
 	}
@@ -198,7 +198,7 @@ func TestResolveSpellAttackCritDoubleDamage(t *testing.T) {
 	attacker.Stats.Nom = "Magicien"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolveSpellAttack(attacker, target, domain.Sort{Nom: "Boule de Feu"})
+	msg, _ := resolveSpellAttack(attacker, target, domain.Sort{Nom: "Boule de Feu"})
 	// normal = 24, crit = 48
 	if target.CurrentPV != 2 {
 		t.Errorf("PV = %v, want 2 (48 dmg)", target.CurrentPV)
@@ -219,7 +219,7 @@ func TestResolveSpellAttackBonusAndDice(t *testing.T) {
 	attacker.Stats.Nom = "Magicien"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolveSpellAttack(attacker, target, domain.Sort{
+	msg, _ := resolveSpellAttack(attacker, target, domain.Sort{
 		Nom:       "Éclair de Givre",
 		Bonus:     4,
 		DesDégâts: "d8",
@@ -244,7 +244,7 @@ func TestResolveSpellAttackDiceCritTwoDice(t *testing.T) {
 	attacker.Stats.Nom = "Magicien"
 	target.Stats.Nom = "Goblin"
 
-	msg := resolveSpellAttack(attacker, target, domain.Sort{
+	msg, _ := resolveSpellAttack(attacker, target, domain.Sort{
 		Nom:       "Boule de Feu",
 		DesDégâts: "d6",
 	})
@@ -514,7 +514,7 @@ func TestAttackDamagePersistedOnTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer repo2.Close()
-	_, _, _, pv, _, _, _, _, _, err := repo2.GetCharacter("brutus")
+	_, _, _, pv, _, _, _, _, _, _, _, err := repo2.GetCharacter("brutus")
 	if err != nil {
 		t.Fatalf("target character missing from DB: %v", err)
 	}

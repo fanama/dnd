@@ -1,7 +1,10 @@
 <script>
     export let logs = [];
+    export let onSend = (msg) => {};
     let box;
     let showScrollHint = false;
+    let chatInput = '';
+    let sending = false;
 
     $: if (logs && box) {
         setTimeout(() => {
@@ -70,6 +73,28 @@
             </button>
         {/if}
     </div>
+
+    <form class="chat-input-row" on:submit|preventDefault={() => {
+        const text = chatInput.trim();
+        if (!text || sending) return;
+        sending = true;
+        onSend(text);
+        chatInput = '';
+        sending = false;
+    }}>
+        <input
+            type="text"
+            class="chat-input"
+            bind:value={chatInput}
+            placeholder="Envoyer un message..."
+            disabled={sending}
+            maxlength="500"
+            aria-label="Message"
+        />
+        <button type="submit" class="chat-send-btn" disabled={!chatInput.trim() || sending} title="Envoyer">
+            ➤
+        </button>
+    </form>
 </div>
 
 <style>
@@ -216,5 +241,63 @@
     .scroll-hint:hover {
         background: rgba(0, 0, 0, 0.9);
         border-color: #c5a059;
+    }
+
+    .chat-input-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .chat-input {
+        flex: 1;
+        padding: 12px 16px;
+        background: #2b221a;
+        border: 2px solid #574f3e;
+        color: #f5f0e8;
+        border-radius: 10px;
+        font-family: 'Alegreya', serif;
+        font-size: 0.95rem;
+        outline: none;
+        transition: all 0.2s ease;
+        min-width: 0;
+    }
+
+    .chat-input::placeholder {
+        color: #7a6f5f;
+        font-style: italic;
+    }
+
+    .chat-input:focus {
+        border-color: #d4af37;
+        box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2);
+        background: #322a1f;
+    }
+
+    .chat-input:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .chat-send-btn {
+        width: 46px;
+        flex-shrink: 0;
+        background: linear-gradient(to bottom, #c5a059, #a67c37);
+        color: #1a1208;
+        border: none;
+        border-radius: 10px;
+        font-size: 1.1rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .chat-send-btn:hover:not(:disabled) {
+        filter: brightness(1.1);
+        transform: translateY(-1px);
+    }
+
+    .chat-send-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
     }
 </style>

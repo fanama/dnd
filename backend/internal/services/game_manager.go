@@ -7,7 +7,6 @@ import (
 	"dnd-backend/internal/domain"
 	"dnd-backend/internal/repository"
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 )
 
 // Action is a single player or DM command sent from a client.
@@ -36,11 +35,13 @@ type Action struct {
 	QuestName    string       `json:"quest_name,omitempty"`
 	QuestIndex   int          `json:"quest_index,omitempty"`
 	Payload      string       `json:"payload,omitempty"`
+	Message      string       `json:"message,omitempty"`
+	Or           float64      `json:"or,omitempty"`
 	Pseudo       string       `json:"-"`
 }
 
 type GameManager struct {
-	Connections   map[string]*websocket.Conn
+	Connections   map[string]*client
 	World         *domain.World
 	Repo          *repository.SQLiteRepository
 	DMs           map[string]bool
@@ -52,7 +53,7 @@ type GameManager struct {
 
 func NewGameManager(repo *repository.SQLiteRepository) *GameManager {
 	gm := &GameManager{
-		Connections: make(map[string]*websocket.Conn),
+		Connections: make(map[string]*client),
 		DMs:         make(map[string]bool),
 		Repo:        repo,
 		persister:   NewPersister(repo),
@@ -77,16 +78,21 @@ func (gm *GameManager) Close() {
 func (gm *GameManager) DisconnectAll() {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
-	for pseudo := range gm.Connections {
+	for pseudo, c := range gm.Connections {
+		c.close()
 		delete(gm.Connections, pseudo)
 	}
 }
 
-func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[string]string) {
+func (gm *GameManager) Connect(pseudo string, c *client, charInfo map[string]string) {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
-	gm.Connections[pseudo] = ws
+	if old, ok := gm.Connections[pseudo]; ok && old != nil {
+		old.close()
+		gm.chat("⚠️ %s vient de se reconnecter, l'ancienne session est fermée.", pseudo)
+	}
+	gm.Connections[pseudo] = c
 
 	// Detect DM role
 	isDM := pseudo == "dm" || len(pseudo) > 3 && pseudo[:3] == "dm_"
@@ -99,7 +105,7 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 	}
 
 	// 1. Attempt to restore from DB
-	_, _, lieu, pv, _, invStr, statsStr, equipStr, questsStr, err := gm.Repo.GetCharacter(pseudo)
+	_, _, lieu, pv, _, or, xp, invStr, statsStr, equipStr, questsStr, err := gm.Repo.GetCharacter(pseudo)
 	if err == nil {
 		var stats domain.Stats
 		json.Unmarshal([]byte(statsStr), &stats)
@@ -115,10 +121,15 @@ func (gm *GameManager) Connect(pseudo string, ws *websocket.Conn, charInfo map[s
 			Alignement: "Neutre",
 			Stats:      stats,
 			CurrentPV:  float64(pv),
+			Or:         or,
+			Xp:         xp,
 			Lieu:       lieu,
 			Inventaire: inventory,
 			Equipement: equip,
 			Quests:     quests,
+		}
+		if char.CurrentPV <= 0 {
+			char.CurrentPV = stats.CalculateLifePoints()
 		}
 		player.Characters = append(player.Characters, char)
 		gm.chat("👋 %s est revenu dans le monde !", pseudo)
@@ -138,6 +149,7 @@ func (gm *GameManager) HandleAction(pseudo string, action Action) {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
+	sanitizeAction(&action)
 	action.Pseudo = pseudo
 
 	// DM actions are routed to the DM handler registry.
@@ -171,7 +183,7 @@ func (gm *GameManager) saveCharacterState(pseudo string, char *domain.Character)
 	pv := int(char.CurrentPV)
 	maxPV := int(char.Stats.CalculateLifePoints())
 	gm.persister.Enqueue(func() {
-		gm.Repo.SaveCharacter(pseudo, nom, classe, lieu, pv, maxPV, string(invJSON), string(statsJSON), string(equipJSON), string(questsJSON))
+		gm.Repo.SaveCharacter(pseudo, nom, classe, lieu, pv, maxPV, string(invJSON), string(statsJSON), string(equipJSON), string(questsJSON), char.Or, char.Xp)
 	})
 }
 
@@ -213,6 +225,11 @@ func (gm *GameManager) NotifyChange() {
 				Stats:      char.Stats,
 				Combat:     computeDerivedCombat(char),
 				Role:       gm.DMs[pseudo],
+				Or:         char.Or,
+				Xp:         char.Xp,
+				Niveau:     char.Level(),
+				Encombrement: char.CarriedWeight(),
+				Capacite:     char.Capacity(),
 			}
 		}
 	}
@@ -246,6 +263,9 @@ func (gm *GameManager) NotifyChange() {
 func (gm *GameManager) Disconnect(pseudo string) {
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
+	if c, ok := gm.Connections[pseudo]; ok {
+		c.close()
+	}
 	delete(gm.Connections, pseudo)
 	delete(gm.DMs, pseudo)
 	gm.chat("🏃 %s a quitté le jeu.", pseudo)

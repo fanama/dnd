@@ -1,4 +1,20 @@
 import { writable, derived } from 'svelte/store';
+import { pushToast } from './toasts';
+
+export type GameEventKind = 'damage' | 'heal' | 'death' | 'loot' | 'quest' | 'buff' | 'xp' | 'level' | 'gold' | 'buy' | 'sell';
+
+export interface GameEvent {
+    id: number;
+    type: 'event';
+    event: GameEventKind;
+    source?: string;
+    target?: string;
+    amount?: number;
+    crit?: boolean;
+    level?: number;
+    lootCount?: number;
+    text?: string;
+}
 
 export interface Item {
     nom: string;
@@ -56,6 +72,11 @@ export interface PlayerStats {
     max_pv: number;
     classe: string;
     alignement: string;
+    or?: number;
+    xp?: number;
+    niveau?: number;
+    encombrement?: number;
+    capacite?: number;
     stats: {
         force: number;
         constitution: number;
@@ -76,6 +97,8 @@ export interface Location {
     background: string;
     objects: Item[];
     quests?: Quest[];
+    commerce?: Item[];
+    liens?: string[];
 }
 
 export interface GameState {
@@ -94,12 +117,70 @@ export interface SyncData {
     type: 'sync';
     liste: Record<string, PlayerStats>;
     npcs?: any;
-    locations?: { nom: string; objects: Item[]; quests?: Quest[] }[];
+    locations?: { nom: string; objects: Item[]; quests?: Quest[]; commerce?: Item[]; liens?: string[] }[];
 }
 
 interface ChatData {
     type: 'chat';
     msg: string;
+}
+
+interface DeathOverlayState {
+    active: boolean;
+    at?: number;
+}
+
+// gameEvents is a rolling feed of structured combat/inventory events consumed
+// by the floating-damage layer (and kept small to bound memory).
+export const gameEvents = writable<GameEvent[]>([]);
+
+export const deathOverlay = writable<DeathOverlayState>({ active: false });
+
+let eventId = 0;
+
+function pushEvent(ev: Omit<GameEvent, 'id' | 'type'>): void {
+    const e: GameEvent = { id: ++eventId, type: 'event', ...ev };
+    gameEvents.update((list) => [...list.slice(-24), e]);
+}
+
+// handleGameEvent routes structured backend events to the feedback channels:
+// floating numbers, toasts, the death overlay and stat-based updates.
+function handleGameEvent(me: string, ev: GameEvent): void {
+    switch (ev.event) {
+        case 'damage':
+        case 'heal':
+            pushEvent({ event: ev.event, target: ev.target, amount: ev.amount, crit: ev.crit, source: ev.source, text: ev.text });
+            break;
+        case 'death':
+            pushEvent({ event: 'death', target: ev.target, source: ev.source, text: ev.text });
+            if (ev.target === me) {
+                deathOverlay.set({ active: true, at: Date.now() });
+            } else {
+                pushToast('warn', `☠️ ${ev.target || 'Un héros'} est tombé !`, ev.text || '');
+            }
+            break;
+        case 'loot':
+            pushToast('success', `🎒 ${ev.target} a ramassé : ${ev.text || ''}`);
+            break;
+        case 'gold':
+            pushToast('success', `💰 +${Math.round(ev.amount || 0)} or`, ev.text || '');
+            break;
+        case 'buy':
+            pushToast('info', `🛒 ${ev.text || 'Achat effectué'}`, ev.amount ? `-${Math.round(ev.amount)} or` : '');
+            break;
+        case 'xp':
+            pushToast('info', `✨ +${Math.round(ev.amount || 0)} XP`);
+            break;
+        case 'level':
+            pushToast('success', `🌟 Niveau ${ev.level || '?'} !`, ev.text || '');
+            break;
+        case 'buff':
+            pushToast('info', `✨ ${ev.target || ev.source} : ${ev.text || 'buff'}`);
+            break;
+        case 'quest':
+            pushToast('info', `📜 ${ev.text || 'Quête mise à jour'}`);
+            break;
+    }
 }
 
 export function abilityModifier(stat: number): number {
@@ -154,6 +235,9 @@ export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 're
 
 export const connectionStatus = writable<ConnectionStatus>('disconnected');
 
+// loginError surfaces connection failures on the login screen.
+export const loginError = writable('');
+
 export const gameState = writable<GameState>({
     me: null,
     location: 'En Voyage...',
@@ -186,6 +270,7 @@ const MAX_DELAY_MS = 30000;
 let savedPseudo = '';
 let savedCharName = '';
 let savedCharClass = '';
+let hasConnected = false;
 
 const SESSION_KEY = 'dnd_session';
 
@@ -238,6 +323,7 @@ function scheduleReconnect(): void {
 
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         connectionStatus.set('disconnected');
+        loginError.set('Le serveur de jeu est injoignable. Vérifiez votre connexion puis réessayez.');
         return;
     }
 
@@ -252,11 +338,13 @@ function scheduleReconnect(): void {
 }
 
 function handleMessage(pseudo: string, event: MessageEvent): void {
-    const data: SyncData | ChatData | any = JSON.parse(event.data);
+    const data: SyncData | ChatData | GameEvent | any = JSON.parse(event.data);
     if (data.type === 'chat') {
         gameState.update(s => ({ ...s, logs: [...s.logs, data.msg] }));
     } else if (data.type === 'init_new_char') {
         gameState.update(s => ({ ...s, newChar: true }));
+    } else if (data.type === 'event') {
+        handleGameEvent(pseudo, data as GameEvent);
     } else if (data.type === 'sync') {
         gameState.update(s => {
             const myStats = data.liste[pseudo];
@@ -299,12 +387,16 @@ function openSocket(pseudo: string, charName: string, charClass: string, isRecon
     }
 
     connectionStatus.set(isReconnect ? 'reconnecting' : 'connecting');
+    loginError.set('');
+    hasConnected = false;
 
     socket = new WebSocket(wsUrl(pseudo));
 
     socket.onopen = () => {
         reconnectAttempts = 0;
+        hasConnected = true;
         connectionStatus.set('connected');
+        deathOverlay.set({ active: false });
         gameState.update(s => ({ ...s, me: pseudo }));
         socket!.send(JSON.stringify({
             type: 'init',
@@ -320,7 +412,11 @@ function openSocket(pseudo: string, charName: string, charClass: string, isRecon
     socket.onclose = () => {
         if (intentionalClose) {
             connectionStatus.set('disconnected');
+            loginError.set('');
             return;
+        }
+        if (!hasConnected) {
+            loginError.set('Impossible de joindre le serveur de jeu. Vérifiez qu\'il est lancé puis réessayez.');
         }
         scheduleReconnect();
     };
@@ -334,6 +430,7 @@ export function connect(pseudo: string, charName: string, charClass: string): vo
     intentionalClose = false;
     clearReconnectTimer();
     reconnectAttempts = 0;
+    loginError.set('');
     savedPseudo = pseudo;
     savedCharName = charName;
     savedCharClass = charClass;
@@ -374,6 +471,10 @@ export function disconnect(): void {
 export function finalizeCharacter(stats: Record<string, unknown>): void {
     sendAction({ type: 'create_character', stats });
     gameState.update(s => ({ ...s, newChar: false }));
+}
+
+export function sendChat(message: string): void {
+    sendAction({ type: 'chat_msg', message });
 }
 
 export function sendAction(action: Record<string, unknown>): void {

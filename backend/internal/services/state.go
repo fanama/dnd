@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"dnd-backend/internal/domain"
-	"github.com/gorilla/websocket"
 )
 
 // StateSnapshot is a full, portable dump of the game state (players, NPCs and
@@ -20,12 +19,12 @@ type StateSnapshot struct {
 
 // sendTo delivers a message to a single connected client.
 func (gm *GameManager) sendTo(pseudo string, data interface{}) {
-	conn := gm.Connections[pseudo]
-	if conn == nil {
+	c := gm.Connections[pseudo]
+	if c == nil {
 		return
 	}
 	msg, _ := json.Marshal(data)
-	conn.WriteMessage(websocket.TextMessage, msg)
+	c.enqueue(msg)
 }
 
 // snapshotState captures the current world as a portable snapshot.

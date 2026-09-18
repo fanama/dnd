@@ -79,17 +79,26 @@ func main() {
 		}
 		defer conn.Close()
 
+		// Keepalive: enforce a read deadline and refresh it on every pong and
+		// on each received message so idle-but-alive peers are never dropped.
+		conn.SetReadLimit(16 * 1024)
+		conn.SetReadDeadline(time.Now().Add(services.PongWait))
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(services.PongWait))
+		})
+
 		// Wait for initial character info
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("Read initial msg error:", err)
 			return
 		}
+		conn.SetReadDeadline(time.Now().Add(services.PongWait))
 
 		var charInfo map[string]string
 		json.Unmarshal(msg, &charInfo)
 
-		gm.Connect(pseudo, conn, charInfo)
+		gm.ConnectWS(pseudo, conn, charInfo)
 
 		for {
 			_, msg, err := conn.ReadMessage()
@@ -97,6 +106,7 @@ func main() {
 				gm.Disconnect(pseudo)
 				break
 			}
+			conn.SetReadDeadline(time.Now().Add(services.PongWait))
 
 			var action services.Action
 			if err := json.Unmarshal(msg, &action); err == nil {

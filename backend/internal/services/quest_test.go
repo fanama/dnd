@@ -108,10 +108,10 @@ func TestQuestRepoRoundTrip(t *testing.T) {
 	defer repo.Close()
 
 	questsJSON, _ := json.Marshal([]domain.Quest{questFixture()})
-	if err := repo.SaveCharacter("hero", "Héro", "Guerrier", "Taverne", 100, 100, "[]", "{}", "{}", string(questsJSON)); err != nil {
+	if err := repo.SaveCharacter("hero", "Héro", "Guerrier", "Taverne", 100, 100, "[]", "{}", "{}", string(questsJSON), 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, _, _, _, _, _, questsOut, err := repo.GetCharacter("hero")
+	_, _, _, _, _, _, _, _, _, _, questsOut, err := repo.GetCharacter("hero")
 	if err != nil {
 		t.Fatal(err)
 	}

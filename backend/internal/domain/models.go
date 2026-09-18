@@ -122,8 +122,56 @@ type Character struct {
 	Sorts      []Sort    `json:"sorts"`
 	Equipement Equipment `json:"equipement"`
 	Quests     []Quest   `json:"quests"`
+	Or         float64   `json:"or,omitempty"`
+	Xp         float64   `json:"xp,omitempty"`
 	Lieu       string    `json:"lieu"`
 	MobType    string    `json:"mobType,omitempty"`
+}
+
+// Capacity is the maximum encumbrance value a character can carry.
+func (c *Character) Capacity() float64 {
+	if c.Stats.Force <= 0 {
+		return 150
+	}
+	return c.Stats.Force * 15
+}
+
+// ItemWeight returns the effective weight of an item, falling back to a
+// sensible default when the DM never set an explicit encumbrance value.
+func ItemWeight(it Item) float64 {
+	if it.Encombrement > 0 {
+		return it.Encombrement
+	}
+	if it.IsConsumable {
+		return 0.5
+	}
+	if it.BonusArmure > 0 {
+		return 8
+	}
+	if it.BonusDégâts > 0 || it.DesDégâts != "" {
+		return 4
+	}
+	return 1
+}
+
+// CarriedWeight totals the encumbrance of equipped and carried items.
+func (c *Character) CarriedWeight() float64 {
+	var total float64
+	for _, it := range c.Inventaire {
+		total += ItemWeight(it)
+	}
+	if c.Equipement.Arme != nil {
+		total += ItemWeight(*c.Equipement.Arme)
+	}
+	if c.Equipement.Armure != nil {
+		total += ItemWeight(*c.Equipement.Armure)
+	}
+	return total
+}
+
+// Level derives the character level from cumulative XP (100 XP per level).
+func (c *Character) Level() int {
+	return 1 + int(c.Xp)/100
 }
 
 type Player struct {
@@ -136,6 +184,8 @@ type Location struct {
 	Background string  `json:"background"`
 	Objects    []Item  `json:"objects"`
 	Quests     []Quest `json:"quests,omitempty"`
+	Commerce   []Item  `json:"commerce,omitempty"`
+	Links      []string `json:"liens,omitempty"`
 	Position   struct {
 		X float64 `json:"x"`
 		Y float64 `json:"y"`

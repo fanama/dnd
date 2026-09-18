@@ -1,13 +1,14 @@
 <script>
     import '../app.css';
     import { onMount } from 'svelte';
-    import { gameState, connect, sendAction, finalizeCharacter, tryRestoreSession, connectionStatus } from '../lib/stores/game';
+    import { gameState, connect, sendAction, sendChat, finalizeCharacter, tryRestoreSession, connectionStatus, loginError, disconnect } from '../lib/stores/game';
     import LoginPage from '../lib/components/organisms/pages/LoginPage.svelte';
     import Onboarding from '../lib/components/organisms/Onboarding.svelte';
     import GamePage from '../lib/components/organisms/pages/GamePage.svelte';
+    import ToastContainer from '../lib/components/organisms/ToastContainer.svelte';
+    import DeathOverlay from '../lib/components/organisms/DeathOverlay.svelte';
 
     let pseudo = '';
-    let connectionError = '';
     let restoring = true;
 
     onMount(() => {
@@ -25,9 +26,12 @@
 
     function join() {
         if (pseudo.trim()) {
-            connectionError = '';
             connect(pseudo.trim(), pseudo.trim(), 'Guerrier');
         }
+    }
+
+    function logout() {
+        disconnect();
     }
 
     function move(dest) {
@@ -56,6 +60,14 @@
 
     function unequipItem(slot) {
         sendAction({ type: 'unequip_item', slot: slot });
+    }
+
+    function sellItem(index) {
+        sendAction({ type: 'sell_item', item_index: index });
+    }
+
+    function buyItem(index) {
+        sendAction({ type: 'buy_item', item_index: index });
     }
 
     function acceptQuest(name) {
@@ -95,14 +107,10 @@
 
             <LoginPage
                 bind:pseudo
+                connecting={$connectionStatus === 'connecting' || $connectionStatus === 'reconnecting'}
+                error={$loginError}
                 onJoin={join}
             />
-
-            {#if connectionError}
-                <div class="error-toast fade-in">
-                    {connectionError}
-                </div>
-            {/if}
         </div>
     {:else}
         {#if $gameState.newChar}
@@ -118,13 +126,20 @@
                     onLootItem={lootItem}
                     onEquip={equipItem}
                     onUnequip={unequipItem}
+                    onSellItem={sellItem}
+                    onBuyItem={buyItem}
+                    onSendChat={sendChat}
                     onAcceptQuest={acceptQuest}
                     onCompleteQuest={completeQuest}
+                    onLogout={logout}
                 />
             </div>
         {/if}
     {/if}
 </main>
+
+<ToastContainer />
+<DeathOverlay />
 
 <style>
     :global(body) {
@@ -182,21 +197,6 @@
     .game-view {
         min-height: 100vh;
         min-height: 100dvh;
-    }
-
-    .error-toast {
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(185, 28, 28, 0.9);
-        color: #fecdd3;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font-family: 'Alegreya', serif;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        backdrop-filter: blur(8px);
-        z-index: 100;
     }
 
     @media (max-width: 640px) {

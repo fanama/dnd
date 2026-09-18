@@ -5,6 +5,7 @@
     import QuestPanel from '../QuestPanel.svelte';
     import Button from '../../atoms/Button.svelte';
     import HPBar from '../../atoms/HPBar.svelte';
+    import FloatingDamage from '../../atoms/FloatingDamage.svelte';
     import { myStats, myDerivedStats, connectionStatus } from '../../../stores/game';
 
     export let gameState;
@@ -15,12 +16,17 @@
     export let onLootItem = (name) => {};
     export let onEquip = (name) => {};
     export let onUnequip = (slot) => {};
+    export let onSellItem = (index) => {};
+    export let onBuyItem = (index) => {};
+    export let onSendChat = (message) => {};
     export let onAcceptQuest = (name) => {};
     export let onCompleteQuest = (name) => {};
+    export let onLogout = () => {};
 
     let activeTab = 'charsheet';
     let worldTab = 'combat';
     let castingSpell = null;
+    let logsSeen = 0;
 
     $: myStatsData = $myStats;
     $: myDerived = $myDerivedStats;
@@ -32,6 +38,20 @@
     );
     $: zonePlayerCount = sameZonePlayers.length;
     $: currentLocData = gameState.locations.find(l => l.nom === gameState.location) || null;
+
+    // Only adjacent locations are reachable (the backend enforces it too).
+    $: reachableLocations = currentLocData && currentLocData.liens && currentLocData.liens.length > 0
+        ? gameState.locations.filter(l => currentLocData.liens.includes(l.nom))
+        : gameState.locations.filter(l => l.nom !== gameState.location);
+
+    // Unread journal badge: counts chat/log lines that arrived unseen.
+    $: unreadLogs = Math.max(0, gameState.logs.length - logsSeen);
+    $: if (activeTab === 'world' && worldTab === 'journal') logsSeen = gameState.logs.length;
+
+    // Encumbrance ratio for the character-sheet hint.
+    $: encRatio = myStatsData?.capacite > 0 ? ((myStatsData.encombrement || 0) / myStatsData.capacite) : null;
+
+    $: myName = myStatsData?.nom || gameState.me;
 
     function equipItem(item) {
         if (item.isConsumable) {
@@ -52,6 +72,18 @@
     function slotItem(slot) {
         return slot === 'weapon' ? myEquips.arme : myEquips.armure;
     }
+
+    // Class-based avatar (TODO: avatars par classe).
+    function avatarFor(classe) {
+        const c = (classe || '').toLowerCase();
+        if (c.includes('guerrier') || c.includes('barbare') || c.includes('paladin')) return '⚔️';
+        if (c.includes('magicien') || c.includes('mage') || c.includes('sorcier') || c.includes('sorciere')) return '🔮';
+        if (c.includes('voleur') || c.includes('assassin') || c.includes('roublard')) return '🗡️';
+        if (c.includes('clerc') || c.includes('pretre') || c.includes('paladin')) return '⛪';
+        if (c.includes('ranger') || c.includes('chasseur') || c.includes('druide')) return '🏹';
+        if (c.includes('bard')) return '🎻';
+        return '👤';
+    }
 </script>
 
 <div class="game-container fade-in">
@@ -59,11 +91,15 @@
     <header class="game-header">
         <div class="header-left">
             <div class="avatar-ring">
-                <span class="avatar-icon">👤</span>
+                <span class="avatar-icon">{avatarFor(myStatsData?.classe)}</span>
             </div>
             <div class="header-info">
                 <span class="header-label">Aventurier</span>
-                <h2 class="header-name">{gameState.me}</h2>
+                <h2 class="header-name">{myName}</h2>
+                <div class="header-sub">
+                    <span class="level-badge" title="Niveau">🌟 Niv. {myStatsData?.niveau ?? '-'}</span>
+                    <span class="gold-badge" title="Or en bourse">💰 {Math.round(myStatsData?.or ?? 0)}</span>
+                </div>
             </div>
         </div>
         <div class="header-actions">
@@ -79,6 +115,12 @@
                 <span>👥</span>
                 <span class="player-count">{zonePlayerCount}</span>
             </div>
+            {#if encRatio !== null}
+                <button class="enc-badge" class:enc-warn={encRatio > 0.9} title="Encombrement du sac" on:click={() => activeTab = 'equipment'}>
+                    🎒 {Math.round(encRatio * 100)}%
+                </button>
+            {/if}
+            <button class="logout-btn" on:click={onLogout} title="Quitter la partie">🚪</button>
         </div>
     </header>
 
@@ -115,6 +157,9 @@
         >
             <span class="tab-icon">🌍</span>
             <span class="tab-label">Monde</span>
+            {#if unreadLogs > 0 && !(activeTab === 'world' && worldTab === 'journal')}
+                <span class="unread-badge">{unreadLogs}</span>
+            {/if}
         </button>
     </nav>
 
@@ -282,6 +327,9 @@
                                             Retirer
                                         </Button>
                                     {/if}
+                                    <Button variant="warning" onClick={() => onSellItem(i)} className="px-2 py-1 text-xs" title={item.prix ? `Vendre pour ${item.prix}p` : 'Vendre'}>
+                                        💰 Vendre
+                                    </Button>
                                 </div>
                             </div>
                         {/each}
@@ -337,12 +385,13 @@
                             <span class="section-icon">❤️</span> Points de Vie
                         </h3>
                         {#if myStatsData}
-                            <div class="own-hp">
+                            <div class="own-hp relative">
                                 <div class="own-hp-row">
                                     <span class="own-name">{myStatsData.nom}</span>
                                     <span class="own-class">{myStatsData.classe}</span>
                                 </div>
-                                <HPBar current={myStatsData.pv} max={myStatsData.max_pv || myDerived.maxPv} />
+                                <HPBar current={myStatsData.pv} max={myStatsData.max_pv || myDerived.maxPv} who={myName} />
+                                <FloatingDamage targetKey={myName} />
                             </div>
                         {/if}
                     </div>
@@ -353,15 +402,16 @@
                         </h3>
                         <div class="players-list custom-scrollbar">
                             {#each sameZonePlayers as [p, v]}
-                                <div class="player-card">
+                                <div class="player-card relative">
                                     <div class="player-header">
                                         <strong class="player-name">{v.nom}</strong>
                                         <span class="player-location">{v.classe}</span>
                                     </div>
-                                    <HPBar current={v.pv} max={v.max_pv} showNumbers={false} />
+                                    <HPBar current={v.pv} max={v.max_pv} showNumbers={false} who={v.nom} />
                                     <Button variant="danger" onClick={() => onHit(p)} className="w-full py-2 text-sm">
                                         ⚔️ Attaquer
                                     </Button>
+                                    <FloatingDamage targetKey={v.nom} />
                                 </div>
                             {:else}
                                 <div class="empty-state">
@@ -379,7 +429,7 @@
                             </h3>
                             <div class="players-list custom-scrollbar">
                                 {#each gameState.npcs as npc}
-                                    <div class="player-card npc-card" class:mob-boss={npc.mobType === 'boss'} class:mob-minion={npc.mobType === 'minion'}>
+                                    <div class="player-card npc-card relative" class:mob-boss={npc.mobType === 'boss'} class:mob-minion={npc.mobType === 'minion'}>
                                         <div class="player-header">
                                             <strong class="player-name">
                                                 <span class="mob-icon">{npc.mobType === 'boss' ? '🐲' : npc.mobType === 'minion' ? '👹' : '🤝'}</span>
@@ -395,10 +445,11 @@
                                                 {/if}
                                             </span>
                                         </div>
-                                        <HPBar current={npc.pv} max={npc.max_pv} showNumbers={false} />
+                                        <HPBar current={npc.pv} max={npc.max_pv} showNumbers={false} who={npc.nom} />
                                         <Button variant={npc.mobType === 'boss' ? 'danger' : npc.mobType === 'minion' ? 'warning' : 'danger'} onClick={() => onHit(npc.nom)} className="w-full py-2 text-sm">
                                             ⚔️ Attaquer
                                         </Button>
+                                        <FloatingDamage targetKey={npc.nom} />
                                     </div>
                                 {/each}
                             </div>
@@ -422,22 +473,54 @@
                         onLoot={onLootItem}
                     />
 
+                    {#if currentLocData?.commerce && currentLocData.commerce.length > 0}
+                        <div class="dnd-section">
+                            <h3 class="section-title">
+                                <span class="section-icon">🏪</span> Échoppe du lieu
+                            </h3>
+                            <div class="shop-list custom-scrollbar">
+                                {#each currentLocData.commerce as item, i}
+                                    <div class="shop-item">
+                                        <div class="inv-info">
+                                            <span class="inv-icon">{item.isConsumable ? '🧪' : item.bonusDegats ? '⚔️' : item.bonusArmure ? '🛡️' : '📦'}</span>
+                                            <div class="inv-details">
+                                                <span class="inv-name">{item.nom}</span>
+                                                <div class="inv-stats">
+                                                    {#if item.bonusDegats}<span class="stat atk">+{item.bonusDegats} ATK</span>{/if}
+                                                    {#if item.bonusArmure}<span class="stat def">+{item.bonusArmure} DEF</span>{/if}
+                                                    <span class="stat gold">💰 {item.prix}p</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <Button variant={item.prix > (myStatsData?.or || 0) ? 'danger' : 'success'} onClick={() => onBuyItem(i)} className="px-3 py-1 text-xs">
+                                            Acheter
+                                        </Button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+
                     <div class="dnd-section">
                         <h3 class="section-title">
                             <span class="section-icon">🗺️</span> Se déplacer
                         </h3>
                         <div class="move-buttons">
-                            {#each gameState.locations as loc}
-                                {#if loc.nom !== gameState.location}
-                                    <Button
-                                        onClick={() => onMove(loc.nom)}
-                                        variant={loc.nom === 'Taverne' ? 'primary' : loc.nom === 'Donjon' ? 'danger' : 'arcane'}
-                                        className="w-full text-sm"
-                                    >
-                                        {loc.nom === 'Taverne' ? '🏠' : loc.nom === 'Donjon' ? '⚔️' : loc.nom === 'Foret Enchantee' ? '🌿' : loc.nom === 'Montagne Rocheuse' ? '⛰️' : loc.nom === 'Marais Hante' ? '👻' : loc.nom === 'Plaine des Conflits' ? '🚩' : loc.nom === 'Temple Abandonne' ? '🏛️' : '📍'}
-                                        {loc.nom}
-                                    </Button>
-                                {/if}
+                            {#if reachableLocations.length === 0}
+                                <div class="empty-state">
+                                    <span class="empty-icon">🚧</span>
+                                    <span class="empty-text">Aucune route accessible depuis ici.</span>
+                                </div>
+                            {/if}
+                            {#each reachableLocations as loc}
+                                <Button
+                                    onClick={() => onMove(loc.nom)}
+                                    variant={loc.nom === 'Taverne' ? 'primary' : loc.nom === 'Donjon' ? 'danger' : 'arcane'}
+                                    className="w-full text-sm"
+                                >
+                                    {loc.nom === 'Taverne' ? '🏠' : loc.nom === 'Donjon' ? '⚔️' : loc.nom === 'Foret Enchantee' ? '🌿' : loc.nom === 'Montagne Rocheuse' ? '⛰️' : loc.nom === 'Marais Hante' ? '👻' : loc.nom === 'Plaine des Conflits' ? '🚩' : loc.nom === 'Temple Abandonne' ? '🏛️' : '📍'}
+                                    {loc.nom}
+                                </Button>
                             {/each}
                         </div>
                     </div>
@@ -445,7 +528,7 @@
 
             {:else if worldTab === 'journal'}
                 <div class="fade-in">
-                    <ChatBox logs={gameState.logs} />
+                    <ChatBox logs={gameState.logs} onSend={onSendChat} />
                 </div>
             {/if}
         </section>
@@ -496,7 +579,7 @@
     }
 
     .avatar-icon {
-        filter: brightness(0) invert(1);
+        font-size: 1.6rem;
     }
 
     .header-info {
@@ -1241,6 +1324,125 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+    }
+
+    /* Header badges */
+    .header-sub {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 2px;
+    }
+
+    .level-badge,
+    .gold-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.72rem;
+        color: #e8d4a9;
+        background: rgba(197, 160, 89, 0.12);
+        border: 1px solid rgba(197, 160, 89, 0.25);
+        padding: 2px 8px;
+        border-radius: 100px;
+        white-space: nowrap;
+    }
+
+    .gold-badge {
+        color: #fbbf24;
+    }
+
+    .enc-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-family: 'MedievalSharp', cursive;
+        font-size: 0.72rem;
+        color: #e8d4a9;
+        background: rgba(26, 20, 16, 0.7);
+        border: 1px solid rgba(197, 160, 89, 0.25);
+        padding: 8px 12px;
+        border-radius: 100px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .enc-badge:hover {
+        background: rgba(197, 160, 89, 0.15);
+    }
+
+    .enc-badge.enc-warn {
+        color: #fbbf24;
+        border-color: rgba(245, 158, 11, 0.6);
+    }
+
+    .logout-btn {
+        background: rgba(26, 20, 16, 0.7);
+        border: 1px solid rgba(197, 160, 89, 0.25);
+        border-radius: 100px;
+        color: #7a6f5f;
+        font-size: 1rem;
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .logout-btn:hover {
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.5);
+        background: rgba(239, 68, 68, 0.1);
+    }
+
+    .unread-badge {
+        position: absolute;
+        top: 6px;
+        right: 8px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 100px;
+        background: #ef4444;
+        color: #fff;
+        font-family: 'Alegreya', serif;
+        font-size: 0.65rem;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    .view-tab {
+        position: relative;
+    }
+
+    /* Floating damage anchor */
+    .relative {
+        position: relative;
+    }
+
+    /* Shop */
+    .shop-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .shop-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: rgba(26, 20, 16, 0.6);
+        border-left: 3px solid #6d4c41;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+
+    .shop-item:hover {
+        background: rgba(26, 20, 16, 0.9);
     }
 
     /* Responsive */

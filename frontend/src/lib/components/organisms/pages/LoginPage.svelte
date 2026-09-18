@@ -3,13 +3,16 @@
     import Input from '../../atoms/Input.svelte';
 
     export let pseudo = '';
+    export let connecting = false;
+    export let error = '';
     export let onJoin = () => {};
 
     let pseudoError = '';
     let submitted = false;
 
     $: isValid = pseudo.trim().length >= 2;
-    $: canSubmit = isValid && !submitted;
+    $: canSubmit = isValid && !connecting && !pseudoError;
+    $: displayedError = pseudoError || error;
 
     function validate() {
         submitted = true;
@@ -22,6 +25,12 @@
         if (pseudoError) return;
 
         onJoin();
+    }
+
+    function handleInput(e) {
+        pseudo = e.target.value;
+        pseudoError = '';
+        submitted = false;
     }
 
     function handleKeydown(e) {
@@ -53,8 +62,9 @@
                 id="pseudo-input"
                 label="Pseudo Joueur"
                 bind:value={pseudo}
+                on:input={handleInput}
                 placeholder="Votre nom d'aventurier..."
-                error={pseudoError}
+                error={displayedError}
             />
         </div>
 
@@ -63,13 +73,13 @@
             <Button
                 onClick={validate}
                 disabled={!canSubmit}
-                loading={submitted}
+                loading={connecting}
                 className="w-full py-4 text-xl"
             >
-                Se présenter
+                {connecting ? 'Connexion...' : 'Se présenter'}
             </Button>
-            {#if !isValid && submitted}
-                <p class="hint-error">Veuillez indiquer un pseudo (2 caracteres minimum)</p>
+            {#if displayedError}
+                <p class="hint-error">{displayedError}</p>
             {/if}
         </div>
     </div>
