@@ -57,6 +57,7 @@ func main() {
 	defer repo.Close()
 
 	gm := services.NewGameManager(repo)
+	gm.StartSyncLoop() // coalesced state broadcasts (see syncInterval)
 	defer gm.Close()
 
 	// Option A: one process serves static apps and the WebSocket for both.

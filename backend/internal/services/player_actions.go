@@ -264,7 +264,7 @@ func (gm *GameManager) getTargetCharacter(targetPseudo string) *domain.Character
 	return targetPlayer.Characters[len(targetPlayer.Characters)-1]
 }
 
-func (gm *GameManager) actionEquip(char *domain.Character, itemName string) {
+func (gm *GameManager) actionEquip(char *domain.Character, itemName string) bool {
 	for i := range char.Inventaire {
 		it := char.Inventaire[i]
 		if it.Nom != itemName {
@@ -275,51 +275,66 @@ func (gm *GameManager) actionEquip(char *domain.Character, itemName string) {
 		case it.BonusDégâts > 0 || it.DesDégâts != "":
 			char.Equipement.Arme = &equipped
 			gm.chat("🗡️ %s équipe %s !", char.Stats.Nom, it.Nom)
+			return true
 		case it.BonusArmure > 0:
 			char.Equipement.Armure = &equipped
 			gm.chat("🛡️ %s équipe %s !", char.Stats.Nom, it.Nom)
+			return true
 		default:
 			gm.chat("❌ %s ne peut pas équiper %s (ni arme ni armure)", char.Stats.Nom, it.Nom)
+			return false
 		}
-		return
 	}
 	gm.chat("❌ %s ne possède pas « %s »", char.Stats.Nom, itemName)
+	return false
 }
 
-func (gm *GameManager) actionUnequip(char *domain.Character, slot string) {
+func (gm *GameManager) actionUnequip(char *domain.Character, slot string) bool {
 	switch slot {
 	case "weapon":
 		if char.Equipement.Arme != nil {
 			gm.chat("🔄 %s retire %s.", char.Stats.Nom, char.Equipement.Arme.Nom)
 			char.Equipement.Arme = nil
+			return true
 		}
 	case "armor":
 		if char.Equipement.Armure != nil {
 			gm.chat("🔄 %s retire %s.", char.Stats.Nom, char.Equipement.Armure.Nom)
 			char.Equipement.Armure = nil
+			return true
 		}
 	}
+	return false
 }
 
-func (gm *GameManager) actionAttack(attacker *domain.Character, targetPseudo string) {
+// actionAttack resolves one physical attack. It reports whether game state
+// changed: a miss changes nothing, so it costs no save and no sync.
+func (gm *GameManager) actionAttack(attacker *domain.Character, targetPseudo string) bool {
 	if target := gm.getTargetCharacter(targetPseudo); target != nil && attacker.Lieu == target.Lieu {
 		msg, res := resolvePhysicalAttack(attacker, target)
 		gm.chat("%s", msg)
 		gm.emit(GameEvent{Type: "event", Event: "damage", Source: attacker.Stats.Nom, Target: target.Stats.Nom, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
+		if !res.IsHit {
+			return false
+		}
 		gm.checkDeath(target)
 		gm.saveCharacterState(targetPseudo, target)
-		return
+		return true
 	}
 
 	npc, ok := gm.World.NPCs[targetPseudo]
 	if !ok || attacker.Lieu != npc.Lieu {
-		return
+		return false
 	}
 	msg, res := resolvePhysicalAttack(attacker, npc)
 	gm.chat("%s", msg)
 	gm.emit(GameEvent{Type: "event", Event: "damage", Source: attacker.Stats.Nom, Target: targetPseudo, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
+	if !res.IsHit {
+		return false
+	}
 	gm.npcAfterDamage(targetPseudo, npc, attacker)
 	gm.persistWorld()
+	return true
 }
 
 // findLocation returns a pointer to the location with the given name.
@@ -346,6 +361,8 @@ func (gm *GameManager) npcAfterDamage(name string, npc *domain.Character, killer
 	if loc != nil && len(npc.Inventaire) > 0 {
 		loc.Objects = append(loc.Objects, npc.Inventaire...)
 		npc.Inventaire = nil
+		// The ground loot of that location changed.
+		gm.markLocationsDirty()
 		gm.chat("☠️ %s est tombé ! Son butin tombe au sol.", npc.Stats.Nom)
 		gm.emit(GameEvent{Type: "event", Event: "death", Source: killer.Stats.Nom, Target: npc.Stats.Nom, LootCount: 1, Text: "Son butin est au sol !"})
 	} else {
@@ -370,9 +387,9 @@ func (gm *GameManager) npcAfterDamage(name string, npc *domain.Character, killer
 	delete(gm.World.NPCs, name)
 }
 
-func (gm *GameManager) actionMove(char *domain.Character, dest string) {
+func (gm *GameManager) actionMove(char *domain.Character, dest string) bool {
 	if dest == "" || dest == char.Lieu {
-		return
+		return false
 	}
 	if loc := gm.findLocation(char.Lieu); loc != nil && len(loc.Links) > 0 {
 		reachable := false
@@ -384,12 +401,13 @@ func (gm *GameManager) actionMove(char *domain.Character, dest string) {
 		}
 		if !reachable {
 			gm.chat("🚧 %s ne peut pas aller vers %s depuis %s.", char.Stats.Nom, dest, char.Lieu)
-			return
+			return false
 		}
 	}
 	char.Lieu = dest
 	gm.chat("🧳 %s s'est déplacé vers : %s.", char.Stats.Nom, dest)
 	gm.spawnLoot(dest)
+	return true
 }
 
 func (gm *GameManager) spawnLoot(locationName string) {
@@ -408,15 +426,24 @@ func (gm *GameManager) spawnLoot(locationName string) {
 	}
 
 	numSpawns := rand.Intn(3) // 0, 1, or 2 items
+	spawned := 0
 	for i := 0; i < numSpawns && len(loc.Objects) < 5; i++ {
 		item := lootTable[rand.Intn(len(lootTable))]
 		loc.Objects = append(loc.Objects, item)
 		gm.chat("✨ Un objet est apparu dans %s : %s !", locationName, item.Nom)
+		spawned++
 	}
+	// Nothing spawned → no world snapshot, no locations broadcast.
+	if spawned == 0 {
+		return
+	}
+	gm.markLocationsDirty()
 	gm.persistWorld()
 }
 
-func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string, targetPseudo string) {
+// actionCastSpell resolves one spell. It reports whether game state changed
+// (applied buff or hit): misses and invalid spells cost no save, no sync.
+func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string, targetPseudo string) bool {
 	var spell domain.Sort
 	found := false
 	for _, s := range char.Sorts {
@@ -427,48 +454,59 @@ func (gm *GameManager) actionCastSpell(char *domain.Character, spellName string,
 		}
 	}
 	if !found {
-		return
+		return false
 	}
 
 	if targetChar := gm.getTargetCharacter(targetPseudo); targetChar != nil && char.Lieu == targetChar.Lieu {
 		if spell.Buff != nil {
-			if ok, label := applyStatsBuff(&targetChar.Stats, *spell.Buff); ok {
-				gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
-					char.Stats.Nom, spell.Nom, targetChar.Stats.Nom, spell.Buff.Valeur, label)
-				gm.emit(GameEvent{Type: "event", Event: "buff", Source: char.Stats.Nom, Target: targetChar.Stats.Nom, Amount: spell.Buff.Valeur, Text: label})
+			ok, label := applyStatsBuff(&targetChar.Stats, *spell.Buff)
+			if !ok {
+				return false
 			}
+			gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
+				char.Stats.Nom, spell.Nom, targetChar.Stats.Nom, spell.Buff.Valeur, label)
+			gm.emit(GameEvent{Type: "event", Event: "buff", Source: char.Stats.Nom, Target: targetChar.Stats.Nom, Amount: spell.Buff.Valeur, Text: label})
 			gm.saveCharacterState(targetPseudo, targetChar)
-			return
+			return true
 		}
 		msg, res := resolveSpellAttack(char, targetChar, spell)
 		gm.chat("%s", msg)
 		gm.emit(GameEvent{Type: "event", Event: "damage", Source: char.Stats.Nom, Target: targetChar.Stats.Nom, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
+		if !res.IsHit {
+			return false
+		}
 		gm.checkDeath(targetChar)
 		gm.saveCharacterState(targetPseudo, targetChar)
-		return
+		return true
 	}
 
 	npc, ok := gm.World.NPCs[targetPseudo]
 	if !ok || char.Lieu != npc.Lieu {
-		return
+		return false
 	}
 	if spell.Buff != nil {
-		if ok2, label := applyStatsBuff(&npc.Stats, *spell.Buff); ok2 {
-			gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
-				char.Stats.Nom, spell.Nom, npc.Stats.Nom, spell.Buff.Valeur, label)
-			gm.emit(GameEvent{Type: "event", Event: "buff", Source: char.Stats.Nom, Target: npc.Stats.Nom, Amount: spell.Buff.Valeur, Text: label})
+		ok2, label := applyStatsBuff(&npc.Stats, *spell.Buff)
+		if !ok2 {
+			return false
 		}
+		gm.chat("✨ %s lance %s sur %s ! +%.0f %s (permanent).",
+			char.Stats.Nom, spell.Nom, npc.Stats.Nom, spell.Buff.Valeur, label)
+		gm.emit(GameEvent{Type: "event", Event: "buff", Source: char.Stats.Nom, Target: npc.Stats.Nom, Amount: spell.Buff.Valeur, Text: label})
 		gm.persistWorld()
-		return
+		return true
 	}
 	msg, res := resolveSpellAttack(char, npc, spell)
 	gm.chat("%s", msg)
 	gm.emit(GameEvent{Type: "event", Event: "damage", Source: char.Stats.Nom, Target: targetPseudo, Amount: res.Damage, Crit: res.IsCrit, Text: msg})
+	if !res.IsHit {
+		return false
+	}
 	gm.npcAfterDamage(targetPseudo, npc, char)
 	gm.persistWorld()
+	return true
 }
 
-func (gm *GameManager) actionConsume(char *domain.Character, itemName string) {
+func (gm *GameManager) actionConsume(char *domain.Character, itemName string) bool {
 	itemIdx := -1
 	for i, item := range char.Inventaire {
 		if item.Nom == itemName {
@@ -477,22 +515,24 @@ func (gm *GameManager) actionConsume(char *domain.Character, itemName string) {
 		}
 	}
 	if itemIdx == -1 {
-		return
+		return false
 	}
 	item := char.Inventaire[itemIdx]
-	if item.IsConsumable {
-		heal := float64(rollDiceFn(2, 4)) + domain.AbilityModifier(char.Stats.Constitution)
-		if heal < 1 {
-			heal = 1
-		}
-		char.CurrentPV += heal
-		if char.CurrentPV > char.Stats.CalculateLifePoints() {
-			char.CurrentPV = char.Stats.CalculateLifePoints()
-		}
-		char.Inventaire = append(char.Inventaire[:itemIdx], char.Inventaire[itemIdx+1:]...)
-		gm.chat("🧪 %s boit une %s et récupère %.0f PV !", char.Stats.Nom, item.Nom, heal)
-		gm.emit(GameEvent{Type: "event", Event: "heal", Target: char.Stats.Nom, Amount: heal, Text: item.Nom})
+	if !item.IsConsumable {
+		return false
 	}
+	heal := float64(rollDiceFn(2, 4)) + domain.AbilityModifier(char.Stats.Constitution)
+	if heal < 1 {
+		heal = 1
+	}
+	char.CurrentPV += heal
+	if char.CurrentPV > char.Stats.CalculateLifePoints() {
+		char.CurrentPV = char.Stats.CalculateLifePoints()
+	}
+	char.Inventaire = append(char.Inventaire[:itemIdx], char.Inventaire[itemIdx+1:]...)
+	gm.chat("🧪 %s boit une %s et récupère %.0f PV !", char.Stats.Nom, item.Nom, heal)
+	gm.emit(GameEvent{Type: "event", Event: "heal", Target: char.Stats.Nom, Amount: heal, Text: item.Nom})
+	return true
 }
 
 func (gm *GameManager) checkDeath(char *domain.Character) {
@@ -504,7 +544,7 @@ func (gm *GameManager) checkDeath(char *domain.Character) {
 	}
 }
 
-func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
+func (gm *GameManager) actionLoot(char *domain.Character, itemName string) bool {
 	var currentLocation *domain.Location
 	for i := range gm.World.Locations {
 		if gm.World.Locations[i].Nom == char.Lieu {
@@ -513,7 +553,7 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 		}
 	}
 	if currentLocation == nil || itemName == "" {
-		return
+		return false
 	}
 	itemIdx := -1
 	for i, obj := range currentLocation.Objects {
@@ -523,36 +563,39 @@ func (gm *GameManager) actionLoot(char *domain.Character, itemName string) {
 		}
 	}
 	if itemIdx == -1 {
-		return
+		return false
 	}
 	item := currentLocation.Objects[itemIdx]
 	if char.CarriedWeight()+domain.ItemWeight(item) > char.Capacity() {
 		gm.chat("❌ %s est trop chargé pour ramasser %s.", char.Stats.Nom, item.Nom)
-		return
+		return false
 	}
 	char.Inventaire = append(char.Inventaire, item)
 	currentLocation.Objects = append(currentLocation.Objects[:itemIdx], currentLocation.Objects[itemIdx+1:]...)
 	gm.chat("🎒 %s a ramassé %s dans %s !", char.Stats.Nom, item.Nom, char.Lieu)
 	gm.emit(GameEvent{Type: "event", Event: "loot", Target: char.Stats.Nom, LootCount: 1, Text: item.Nom})
+	gm.markLocationsDirty()
 	gm.persistWorld()
+	return true
 }
 
-func (gm *GameManager) actionAcceptQuest(char *domain.Character, questName string) {
+func (gm *GameManager) actionAcceptQuest(char *domain.Character, questName string) bool {
 	quest := gm.findLocationQuest(char.Lieu, questName)
 	if quest == nil {
-		return
+		return false
 	}
 	for _, q := range char.Quests {
 		if q.Nom == quest.Nom {
 			gm.chat("⚠️ %s a déjà accepté la quête « %s ».", char.Stats.Nom, quest.Nom)
-			return
+			return false
 		}
 	}
 	char.Quests = append(char.Quests, *quest)
 	gm.chat("📜 %s a accepté la quête « %s » : %s", char.Stats.Nom, quest.Nom, quest.Objectif)
+	return true
 }
 
-func (gm *GameManager) actionCompleteQuest(char *domain.Character, questName string) {
+func (gm *GameManager) actionCompleteQuest(char *domain.Character, questName string) bool {
 	idx := -1
 	for i, q := range char.Quests {
 		if q.Nom == questName {
@@ -562,7 +605,7 @@ func (gm *GameManager) actionCompleteQuest(char *domain.Character, questName str
 	}
 	if idx == -1 {
 		gm.chat("❌ %s n'a pas accepté la quête « %s ».", char.Stats.Nom, questName)
-		return
+		return false
 	}
 	quest := char.Quests[idx]
 
@@ -574,6 +617,7 @@ func (gm *GameManager) actionCompleteQuest(char *domain.Character, questName str
 		gm.chat("📜 %s obtient une information : %s", char.Stats.Nom, strings.TrimSpace(quest.Information))
 	}
 	gm.chat("🏆 %s a terminé la quête « %s » !", char.Stats.Nom, quest.Nom)
+	return true
 }
 
 // findLocationQuest looks up a quest by name in a location's available quests.

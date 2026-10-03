@@ -91,7 +91,6 @@ interface DMState {
     players: Record<string, PlayerData>;
     npcs: Record<string, PlayerData>;
     locations: Location[];
-    logs: string[];
     selectedPlayer: string | null;
     latestExport: unknown;
 }
@@ -102,10 +101,33 @@ export const dmState = writable<DMState>({
     players: {},
     npcs: {},
     locations: [],
-    logs: [],
     selectedPlayer: null,
     latestExport: null,
 });
+
+// The journal lives in its own capped store: a long session must not grow an
+// unbounded array that every message copies and re-renders along with the
+// whole DM state.
+export const DM_LOG_LIMIT = 300;
+export const dmLogs = writable<string[]>([]);
+// Counts entries dropped from the front of the capped log so the journal
+// keeps numbering from 1 across the whole session.
+export const dmLogOffset = writable(0);
+
+function appendLog(msg: string): void {
+    let dropped = 0;
+    dmLogs.update((logs) => {
+        const next = [...logs, msg];
+        if (next.length > DM_LOG_LIMIT) {
+            dropped = next.length - DM_LOG_LIMIT;
+            return next.slice(dropped);
+        }
+        return next;
+    });
+    if (dropped > 0) {
+        dmLogOffset.update((o) => o + dropped);
+    }
+}
 
 let socket: WebSocket | undefined;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -154,17 +176,50 @@ function scheduleReconnect(): void {
     }, delay);
 }
 
+// Syncs are coalesced server-side, but bursts can still arrive in one
+// frame: apply only the latest sync per animation frame.
+let pendingSync: any = null;
+let syncFrame: number | null = null;
+
+function scheduleSync(data: any): void {
+    pendingSync = data;
+    if (syncFrame !== null) {
+        return;
+    }
+    syncFrame = requestAnimationFrame(() => {
+        syncFrame = null;
+        const pending = pendingSync;
+        pendingSync = null;
+        if (pending) applySync(pending);
+    });
+}
+
+function cancelScheduledSync(): void {
+    if (syncFrame !== null) {
+        cancelAnimationFrame(syncFrame);
+        syncFrame = null;
+    }
+    pendingSync = null;
+}
+
+function applySync(data: any): void {
+    dmState.update(s => ({
+        ...s,
+        players: data.liste || {},
+        npcs: data.npcs || {},
+        locations: data.locations || s.locations,
+    }));
+}
+
 function handleMessage(event: MessageEvent): void {
     const data = JSON.parse(event.data);
     if (data.type === 'chat') {
-        dmState.update(s => ({ ...s, logs: [...s.logs, data.msg] }));
+        appendLog(data.msg);
     } else if (data.type === 'sync') {
-        dmState.update(s => ({
-            ...s,
-            players: data.liste || {},
-            npcs: data.npcs || {},
-            locations: data.locations || s.locations,
-        }));
+        scheduleSync(data);
+    } else if (data.type === 'locations') {
+        // Locations travel separately and only when they changed.
+        dmState.update(s => ({ ...s, locations: data.locations || s.locations }));
     } else if (data.type === 'state_export') {
         dmState.update(s => ({ ...s, latestExport: data.payload }));
     }
@@ -225,6 +280,7 @@ export function dmDisconnect(): void {
     intentionalClose = true;
     clearReconnectTimer();
     reconnectAttempts = 0;
+    cancelScheduledSync();
     if (socket) {
         socket.onopen = null;
         socket.onmessage = null;

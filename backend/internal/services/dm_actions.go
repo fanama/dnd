@@ -129,6 +129,7 @@ func (gm *GameManager) dmAddLocationItem(locationName string, item domain.Item) 
 		if gm.World.Locations[i].Nom == locationName {
 			gm.World.Locations[i].Objects = append(gm.World.Locations[i].Objects, item)
 			gm.chat("📦 Le MDJ a ajouté \"%s\" à %s.", item.Nom, locationName)
+			gm.markLocationsDirty()
 			gm.persistWorld()
 			gm.NotifyChange()
 			return
@@ -146,6 +147,7 @@ func (gm *GameManager) dmRemoveLocationItem(locationName string, index int) {
 			removed := loc.Objects[index]
 			loc.Objects = append(loc.Objects[:index], loc.Objects[index+1:]...)
 			gm.chat("🗑️ Le MDJ a retiré \"%s\" de %s.", removed.Nom, locationName)
+			gm.markLocationsDirty()
 			gm.persistWorld()
 			gm.NotifyChange()
 			return
@@ -177,6 +179,7 @@ func (gm *GameManager) dmEditLocation(oldName, newName, newBg string) {
 				gm.World.Locations[i].Background = newBg
 			}
 			gm.chat("🗺️ Le MDJ a modifié le lieu \"%s\".", oldName)
+			gm.markLocationsDirty()
 			gm.persistWorld()
 			gm.NotifyChange()
 			return
@@ -461,6 +464,7 @@ func (gm *GameManager) dmAddQuest(locationName string, quest domain.Quest) {
 		if gm.World.Locations[i].Nom == locationName {
 			gm.World.Locations[i].Quests = append(gm.World.Locations[i].Quests, quest)
 			gm.chat("📌 Le MDJ a ajouté la quête « %s » à %s.", quest.Nom, locationName)
+			gm.markLocationsDirty()
 			gm.persistWorld()
 			gm.NotifyChange()
 			return
@@ -478,6 +482,7 @@ func (gm *GameManager) dmRemoveQuest(locationName string, index int) {
 			removed := loc.Quests[index]
 			loc.Quests = append(loc.Quests[:index], loc.Quests[index+1:]...)
 			gm.chat("🗑️ Le MDJ a retiré la quête « %s » de %s.", removed.Nom, locationName)
+			gm.markLocationsDirty()
 			gm.persistWorld()
 			gm.NotifyChange()
 			return
@@ -535,6 +540,7 @@ func (gm *GameManager) dmEditQuest(locationName string, index int, quest domain.
 			}
 			loc.Quests[index] = quest
 			gm.chat("✏️ Le MDJ a modifié la quête « %s » à %s.", quest.Nom, locationName)
+			gm.markLocationsDirty()
 			gm.persistWorld()
 			gm.NotifyChange()
 			return

@@ -132,10 +132,12 @@ func (gm *GameManager) loadOrSeedWorld() {
 }
 
 // persistWorld snapshots the NPCs and locations and queues a database write.
+// The write is keyed "world", so bursts (a minion wave taking hits) collapse
+// into a single write of the freshest snapshot.
 func (gm *GameManager) persistWorld() {
 	npcsJSON, _ := json.Marshal(gm.World.NPCs)
 	locsJSON, _ := json.Marshal(gm.World.Locations)
-	gm.persister.Enqueue(func() {
+	gm.persister.Enqueue("world", func() {
 		gm.Repo.SaveWorld(string(npcsJSON), string(locsJSON))
 	})
 }

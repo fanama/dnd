@@ -1,5 +1,8 @@
 <script>
     export let logs = [];
+    // Numbering offset: the store is capped, this keeps entries numbered
+    // across the whole session.
+    export let startIndex = 0;
     export let onSend = (msg) => {};
     let box;
     let showScrollHint = false;
@@ -60,7 +63,7 @@
             {:else}
                 {#each logs as log, i}
                     <div class="log-entry">
-                        <span class="log-index">{i + 1}</span>
+                        <span class="log-index">{startIndex + i + 1}</span>
                         <span class="log-text">{log}</span>
                     </div>
                 {/each}

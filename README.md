@@ -179,7 +179,11 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 
 ### Server -> Client Events
 1. **Chat (`type: "chat"`)**: Broadcasts game events to all players.
-2. **Sync (`type: "sync"`)**: Full state of all players, NPCs and locations. Includes `liste` (players, with their active `quests`), `npcs`, and `locations` (with the `quests` offered at each location).
+2. **Event (`type: "event"`)**: Structured combat/loot/quest events that drive toasts, floating damage and overlays.
+3. **Sync (`type: "sync"`)**: Coalesced state broadcast — at most one per 60 ms, regardless of action rate — scoped per audience:
+   * **Players** receive a slim roster (`liste`: `nom`, `pv`, `max_pv`, `classe`, `lieu`, `alignement`, `niveau`, `role` for every hero) plus slim `npcs` (HP + `mobType` badges), followed by a **`moi`** message carrying their own full character sheet.
+   * **The DM** receives the complete state (full `liste` with `stats`/`inventaire`/`quests`, full `npcs`).
+4. **Locations (`type: "locations"`)**: Full location data (ground loot, shops, quests) — sent once on connect and re-broadcast only when it actually changes, never repeated in every sync.
 
 ---
 
@@ -205,7 +209,7 @@ The `item` object may carry `bonusDegats`, `bonusArmure` and `desDegats` (damage
 * **Attaque physique sur MOB**: l'action `attack` cible un autre héros, un PNJ **ou un MOB** du même lieu (même formule arme/mêlée/à distance)
 * **Butin à la mort**: quand un MOB (ou PNJ) tombe à 0 PV, son inventaire est déposé au sol du lieu (objet récupérable par les héros via `loot`)
 * **Équipement**: actions `equip_item` / `unequip_item` (slots `weapon`/`armor`) gérées par le serveur et persistées en base ; le personnage démarre avec son arme de classe équipée
-* **Persistence**: Characters are saved to SQLite after every action
+* **Persistence**: Characters are saved to SQLite after every *state-changing* action; writes are coalesced per character/world (last snapshot wins) and the database runs in WAL mode, so bursts of actions cost a single write
 * **Death**: Falling to 0 HP resurrects at the Taverne at full HP
 * **NPCs**: Managed by the DM only; NPCs are broadcast to players who see them at their current location
 * **Quêtes**: Locations offer quests (`accept_quest` / `complete_quest`); completing one requires every `obstacle` item in the inventory (consumed on completion) and grants the `recompense` items. The DM can also assign quests directly to a character (`dm_add_quest_player`)

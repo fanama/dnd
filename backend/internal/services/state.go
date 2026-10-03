@@ -87,6 +87,7 @@ func (gm *GameManager) dmLoadState(payload string) {
 			gm.saveCharacterState(pseudo, pl.Characters[len(pl.Characters)-1])
 		}
 	}
+	gm.markLocationsDirty()
 	gm.chat("💾 Le MDJ a restauré un état de partie sauvegardé.")
 	gm.NotifyChange()
 }

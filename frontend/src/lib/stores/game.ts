@@ -106,18 +106,40 @@ export interface GameState {
     location: string;
     players: Record<string, PlayerStats>;
     npcs: any[];
-    logs: string[];
     currentLocationObjects: Item[];
     currentLocationQuests: Quest[];
     locations: Location[];
     newChar: boolean;
 }
 
+// PlayerSummary is the slim roster entry the server sends about *other*
+// heroes; our own full sheet arrives in a separate "moi" message.
+export interface PlayerSummary {
+    nom: string;
+    pv: number;
+    max_pv: number;
+    classe: string;
+    lieu: string;
+    alignement: string;
+    niveau: number;
+    role: boolean;
+}
+
 export interface SyncData {
     type: 'sync';
-    liste: Record<string, PlayerStats>;
+    liste: Record<string, PlayerSummary>;
     npcs?: any;
-    locations?: { nom: string; objects: Item[]; quests?: Quest[]; commerce?: Item[]; liens?: string[] }[];
+    locations?: Location[];
+}
+
+interface MeData {
+    type: 'moi';
+    moi: PlayerStats;
+}
+
+interface LocationsData {
+    type: 'locations';
+    locations: Location[];
 }
 
 interface ChatData {
@@ -141,6 +163,33 @@ let eventId = 0;
 function pushEvent(ev: Omit<GameEvent, 'id' | 'type'>): void {
     const e: GameEvent = { id: ++eventId, type: 'event', ...ev };
     gameEvents.update((list) => [...list.slice(-24), e]);
+}
+
+// --- Journal ---------------------------------------------------------------
+//
+// The journal lives in its own capped store: a long session must not grow an
+// unbounded array that every message copies and re-renders along with the
+// game state, and chat lines no longer invalidate the world view.
+
+export const LOG_LIMIT = 300;
+export const gameLogs = writable<string[]>([]);
+// logOffset counts entries dropped from the front of the capped log so the
+// journal keeps numbering from 1 across the whole session.
+export const logOffset = writable(0);
+
+function appendLog(msg: string): void {
+    let dropped = 0;
+    gameLogs.update((logs) => {
+        const next = [...logs, msg];
+        if (next.length > LOG_LIMIT) {
+            dropped = next.length - LOG_LIMIT;
+            return next.slice(dropped);
+        }
+        return next;
+    });
+    if (dropped > 0) {
+        logOffset.update((o) => o + dropped);
+    }
 }
 
 // handleGameEvent routes structured backend events to the feedback channels:
@@ -243,7 +292,6 @@ export const gameState = writable<GameState>({
     location: 'En Voyage...',
     players: {},
     npcs: [],
-    logs: [],
     currentLocationObjects: [],
     currentLocationQuests: [],
     locations: [],
@@ -337,41 +385,98 @@ function scheduleReconnect(): void {
     }, delay);
 }
 
+// --- State message handling ------------------------------------------------
+//
+// The server coalesces syncs, but a burst (moi + sync + locations, or several
+// flushes) can still land in one frame; applying only the latest sync per
+// animation frame keeps rendering to at most one update per frame.
+
+let pendingSync: { pseudo: string; data: SyncData } | null = null;
+let syncFrame: number | null = null;
+
+function scheduleSync(pseudo: string, data: SyncData): void {
+    pendingSync = { pseudo, data };
+    if (syncFrame !== null) {
+        return;
+    }
+    syncFrame = requestAnimationFrame(() => {
+        syncFrame = null;
+        const pending = pendingSync;
+        pendingSync = null;
+        if (pending) {
+            applySync(pending.pseudo, pending.data);
+        }
+    });
+}
+
+function cancelScheduledSync(): void {
+    if (syncFrame !== null) {
+        cancelAnimationFrame(syncFrame);
+        syncFrame = null;
+    }
+    pendingSync = null;
+}
+
+// applyMe stores our own full character (the roster entry is a summary).
+function applyMe(pseudo: string, data: MeData): void {
+    gameState.update(s => ({ ...s, players: { ...s.players, [pseudo]: data.moi } }));
+}
+
+function applySync(pseudo: string, data: SyncData): void {
+    gameState.update(s => {
+        // The roster carries slim summaries; cast through unknown and
+        // overwrite our own entry with the full sheet below.
+        const players = { ...data.liste } as unknown as Record<string, PlayerStats>;
+        // Keep our latest full sheet instead of the slim roster entry.
+        if (s.players[pseudo]) {
+            players[pseudo] = s.players[pseudo];
+        }
+        const locations = data.locations || s.locations;
+        const location = data.liste[pseudo] ? data.liste[pseudo].lieu : s.location;
+        const loc = locations.find(l => l.nom === location);
+        const npcList = data.npcs ? Object.values(data.npcs) : [];
+        return {
+            ...s,
+            players,
+            npcs: npcList.filter((n: any) => n.lieu === location),
+            location,
+            currentLocationObjects: loc ? loc.objects : [],
+            currentLocationQuests: loc ? (loc.quests || []) : [],
+            locations
+        };
+    });
+}
+
+// applyLocations refreshes the location data (ground loot, shops, quests)
+// which the server only re-broadcasts when it actually changed.
+function applyLocations(data: LocationsData): void {
+    gameState.update(s => {
+        const locations = data.locations || s.locations;
+        const lieu = s.me && s.players[s.me] ? s.players[s.me].lieu : s.location;
+        const loc = locations.find(l => l.nom === lieu);
+        return {
+            ...s,
+            locations,
+            currentLocationObjects: loc ? loc.objects : [],
+            currentLocationQuests: loc ? (loc.quests || []) : []
+        };
+    });
+}
+
 function handleMessage(pseudo: string, event: MessageEvent): void {
-    const data: SyncData | ChatData | GameEvent | any = JSON.parse(event.data);
+    const data: SyncData | ChatData | GameEvent | MeData | LocationsData | any = JSON.parse(event.data);
     if (data.type === 'chat') {
-        gameState.update(s => ({ ...s, logs: [...s.logs, data.msg] }));
+        appendLog(data.msg);
     } else if (data.type === 'init_new_char') {
         gameState.update(s => ({ ...s, newChar: true }));
     } else if (data.type === 'event') {
         handleGameEvent(pseudo, data as GameEvent);
+    } else if (data.type === 'moi') {
+        applyMe(pseudo, data as MeData);
     } else if (data.type === 'sync') {
-        gameState.update(s => {
-            const myStats = data.liste[pseudo];
-
-            let currentLocationObjects: Item[] = [];
-            let currentLocationQuests: Quest[] = [];
-            if (data.locations) {
-                const loc = data.locations.find(l => l.nom === (myStats ? myStats.lieu : s.location));
-                if (loc) {
-                    currentLocationObjects = loc.objects;
-                    currentLocationQuests = loc.quests || [];
-                }
-            }
-
-            const npcList = data.npcs ? Object.values(data.npcs) : [];
-            const currentNpcs = npcList.filter((n: any) => n.lieu === (myStats ? myStats.lieu : s.location));
-
-            return {
-                ...s,
-                players: data.liste,
-                npcs: currentNpcs,
-                location: myStats ? myStats.lieu : s.location,
-                currentLocationObjects: currentLocationObjects,
-                currentLocationQuests: currentLocationQuests,
-                locations: data.locations || s.locations
-            };
-        });
+        scheduleSync(pseudo, data as SyncData);
+    } else if (data.type === 'locations') {
+        applyLocations(data as LocationsData);
     }
 }
 
@@ -456,6 +561,7 @@ export function disconnect(): void {
     clearReconnectTimer();
     reconnectAttempts = 0;
     clearSession();
+    cancelScheduledSync();
     if (socket) {
         socket.onopen = null;
         socket.onmessage = null;

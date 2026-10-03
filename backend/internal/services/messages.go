@@ -124,12 +124,108 @@ func npcMaxPV(npc *domain.Character) float64 {
 	return derived
 }
 
-// SyncMessage is the full game state broadcast after every mutation.
+// SyncMessage is the full-state broadcast the DM panel receives: complete
+// roster and complete NPCs. Locations are not part of it — they are sent
+// once on connect and re-broadcast only when they change (LocationsMessage).
 type SyncMessage struct {
-	Type      string                 `json:"type"`
-	Liste     map[string]PlayerEntry `json:"liste"`
-	NPCs      map[string]NPCEntry    `json:"npcs"`
-	Locations []domain.Location      `json:"locations"`
+	Type  string                 `json:"type"`
+	Liste map[string]PlayerEntry `json:"liste"`
+	NPCs  map[string]NPCEntry    `json:"npcs"`
+}
+
+// PlayerSummary is the slim roster entry player clients receive about
+// *other* heroes: exactly the fields the player UI displays (HP bar, zone
+// list, target picking). Full character sheets are sent only to their owner.
+type PlayerSummary struct {
+	Nom        string  `json:"nom"`
+	PV         float64 `json:"pv"`
+	MaxPV      float64 `json:"max_pv"`
+	Classe     string  `json:"classe"`
+	Lieu       string  `json:"lieu"`
+	Alignement string  `json:"alignement"`
+	Niveau     int     `json:"niveau"`
+	Role       bool    `json:"role"`
+}
+
+// NPCSummary is the slim NPC/MOB entry player clients receive: HP bar,
+// badges and targeting are all the player UI needs; combat resolution stays
+// server-side. The DM panel keeps receiving full NPCEntry values.
+type NPCSummary struct {
+	Nom        string  `json:"nom"`
+	PV         float64 `json:"pv"`
+	MaxPV      float64 `json:"max_pv"`
+	Classe     string  `json:"classe"`
+	Lieu       string  `json:"lieu"`
+	Alignement string  `json:"alignement"`
+	MobType    string  `json:"mobType,omitempty"`
+}
+
+// PlayerSyncMessage is the coalesced roster broadcast for player clients:
+// slim entries for everyone. The receiver's own full character arrives in a
+// separate "moi" message so one shared payload can serve every player.
+type PlayerSyncMessage struct {
+	Type  string                  `json:"type"`
+	Liste map[string]PlayerSummary `json:"liste"`
+	NPCs  map[string]NPCSummary   `json:"npcs"`
+}
+
+// MeMessage carries the receiving player's own full character, so their
+// sheet stays complete while the roster stays slim.
+type MeMessage struct {
+	Type string      `json:"type"`
+	Moi  PlayerEntry `json:"moi"`
+}
+
+// LocationsMessage carries the full location data (ground loot, shops,
+// quests). It is sent once on connect and re-broadcast only when locations
+// actually change, instead of being repeated in every sync.
+type LocationsMessage struct {
+	Type      string            `json:"type"`
+	Locations []domain.Location `json:"locations"`
+}
+
+// --- deep-copy helpers ------------------------------------------------------
+//
+// Sync payloads are snapshotted under the game lock but marshalled outside of
+// it, so every slice that crosses that boundary must be a private copy: the
+// game loop keeps mutating the originals concurrently.
+
+func cloneItems(src []domain.Item) []domain.Item {
+	if src == nil {
+		return nil
+	}
+	return append([]domain.Item(nil), src...)
+}
+
+func cloneSorts(src []domain.Sort) []domain.Sort {
+	if src == nil {
+		return nil
+	}
+	return append([]domain.Sort(nil), src...)
+}
+
+func cloneQuests(src []domain.Quest) []domain.Quest {
+	if src == nil {
+		return nil
+	}
+	out := make([]domain.Quest, len(src))
+	for i, q := range src {
+		out[i] = q
+		out[i].Recompense = cloneItems(q.Recompense)
+	}
+	return out
+}
+
+func cloneLocations(src []domain.Location) []domain.Location {
+	out := make([]domain.Location, len(src))
+	for i, l := range src {
+		out[i] = l
+		out[i].Links = append([]string(nil), l.Links...)
+		out[i].Objects = cloneItems(l.Objects)
+		out[i].Commerce = cloneItems(l.Commerce)
+		out[i].Quests = cloneQuests(l.Quests)
+	}
+	return out
 }
 
 func (gm *GameManager) broadcast(data interface{}) {

@@ -10,10 +10,21 @@ type SQLiteRepository struct {
 }
 
 func NewSQLiteRepository(dbPath string) (*SQLiteRepository, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	// WAL mode turns each commit into a cheap append instead of a full
+	// rollback-journal fsync, and lets readers overlap the single writer.
+	// busy_timeout retries briefly instead of failing with SQLITE_BUSY when
+	// writes collide; synchronous=NORMAL is the standard durable-enough
+	// pairing with WAL (an OS crash can lose the last commits, never corrupt
+	// the database — and backups run a checkpoint first anyway).
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
 	}
+	// Small, bounded pool: one writer at a time (SQLite serialises writes
+	// anyway) with a couple of readers; unlimited conns only multiply
+	// SQLITE_BUSY chances.
+	db.SetMaxOpenConns(4)
 
 	if err := db.Ping(); err != nil {
 		return nil, err

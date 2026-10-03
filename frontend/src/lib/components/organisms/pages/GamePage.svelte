@@ -6,7 +6,7 @@
     import Button from '../../atoms/Button.svelte';
     import HPBar from '../../atoms/HPBar.svelte';
     import FloatingDamage from '../../atoms/FloatingDamage.svelte';
-    import { myStats, myDerivedStats, connectionStatus } from '../../../stores/game';
+    import { myStats, myDerivedStats, connectionStatus, gameLogs, logOffset } from '../../../stores/game';
 
     export let gameState;
     export let onMove = (dest) => {};
@@ -45,8 +45,11 @@
         : gameState.locations.filter(l => l.nom !== gameState.location);
 
     // Unread journal badge: counts chat/log lines that arrived unseen.
-    $: unreadLogs = Math.max(0, gameState.logs.length - logsSeen);
-    $: if (activeTab === 'world' && worldTab === 'journal') logsSeen = gameState.logs.length;
+    // The journal store is capped, so logOffset carries the number of lines
+    // scrolled off its front — totals stay session-wide.
+    $: totalLogs = $logOffset + $gameLogs.length;
+    $: unreadLogs = Math.max(0, totalLogs - logsSeen);
+    $: if (activeTab === 'world' && worldTab === 'journal') logsSeen = totalLogs;
 
     // Encumbrance ratio for the character-sheet hint.
     $: encRatio = myStatsData?.capacite > 0 ? ((myStatsData.encombrement || 0) / myStatsData.capacite) : null;
@@ -528,7 +531,7 @@
 
             {:else if worldTab === 'journal'}
                 <div class="fade-in">
-                    <ChatBox logs={gameState.logs} onSend={onSendChat} />
+                    <ChatBox logs={$gameLogs} startIndex={$logOffset} onSend={onSendChat} />
                 </div>
             {/if}
         </section>

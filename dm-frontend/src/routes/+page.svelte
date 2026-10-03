@@ -1,6 +1,6 @@
 <script>
     import '../app.css';
-    import { dmState, dmConnect, dmSend, selectPlayer, dmRequestExport, dmLoadStateFromJson, connectionStatus } from '../lib/stores/dm';
+    import { dmState, dmConnect, dmSend, selectPlayer, dmRequestExport, dmLoadStateFromJson, connectionStatus, dmLogs, dmLogOffset } from '../lib/stores/dm';
     import PlayerCard from '../lib/components/PlayerCard.svelte';
     import StatsEditor from '../lib/components/StatsEditor.svelte';
     import InventoryEditor from '../lib/components/InventoryEditor.svelte';
@@ -320,7 +320,7 @@
                         </div>
                     </div>
 
-                    <ChatBox logs={$dmState.logs} />
+                    <ChatBox logs={$dmLogs} startIndex={$dmLogOffset} />
                 </aside>
             </div>
         </div>

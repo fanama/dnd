@@ -2,8 +2,10 @@ package services
 
 import "dnd-backend/internal/domain"
 
-// playerActionFn handles a player action on the given character.
-type playerActionFn func(gm *GameManager, char *domain.Character, action Action)
+// playerActionFn handles a player action on the given character and reports
+// whether it mutated game state. Only mutating actions trigger a database
+// save and a (coalesced) client sync — chats and refused actions are free.
+type playerActionFn func(gm *GameManager, char *domain.Character, action Action) bool
 
 // dmActionFn handles a DM-only action.
 type dmActionFn func(gm *GameManager, action Action)
@@ -12,20 +14,25 @@ type dmActionFn func(gm *GameManager, action Action)
 // replacing the previous switch-based dispatch in HandleAction.
 func (gm *GameManager) registerActions() {
 	gm.playerActions = map[string]playerActionFn{
-		"attack":         func(gm *GameManager, c *domain.Character, a Action) { gm.actionAttack(c, a.Cible) },
-		"move":           func(gm *GameManager, c *domain.Character, a Action) { gm.actionMove(c, a.Destination) },
-		"cast_spell":     func(gm *GameManager, c *domain.Character, a Action) { gm.actionCastSpell(c, a.Sort, a.Cible) },
-		"use_consumable": func(gm *GameManager, c *domain.Character, a Action) { gm.actionConsume(c, a.ItemName) },
-		"loot":           func(gm *GameManager, c *domain.Character, a Action) { gm.actionLoot(c, a.LootName) },
-		"equip_item":     func(gm *GameManager, c *domain.Character, a Action) { gm.actionEquip(c, a.ItemName) },
-		"unequip_item":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionUnequip(c, a.Slot) },
-		"accept_quest":   func(gm *GameManager, c *domain.Character, a Action) { gm.actionAcceptQuest(c, a.QuestName) },
-		"complete_quest": func(gm *GameManager, c *domain.Character, a Action) { gm.actionCompleteQuest(c, a.QuestName) },
-		"chat_msg":       func(gm *GameManager, c *domain.Character, a Action) { gm.playerChat(c, a.Message) },
-		"sell_item":      func(gm *GameManager, c *domain.Character, a Action) { gm.actionSell(c, a.ItemIndex) },
-		"buy_item":       func(gm *GameManager, c *domain.Character, a Action) { gm.actionBuy(c, a.ItemIndex) },
-		"create_character": func(gm *GameManager, c *domain.Character, a Action) {
+		"attack":         func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionAttack(c, a.Cible) },
+		"move":           func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionMove(c, a.Destination) },
+		"cast_spell":     func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionCastSpell(c, a.Sort, a.Cible) },
+		"use_consumable": func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionConsume(c, a.ItemName) },
+		"loot":           func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionLoot(c, a.LootName) },
+		"equip_item":     func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionEquip(c, a.ItemName) },
+		"unequip_item":   func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionUnequip(c, a.Slot) },
+		"accept_quest":   func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionAcceptQuest(c, a.QuestName) },
+		"complete_quest": func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionCompleteQuest(c, a.QuestName) },
+		// A chat message is broadcast immediately and changes no state.
+		"chat_msg": func(gm *GameManager, c *domain.Character, a Action) bool {
+			gm.playerChat(c, a.Message)
+			return false
+		},
+		"sell_item": func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionSell(c, a.ItemIndex) },
+		"buy_item":  func(gm *GameManager, c *domain.Character, a Action) bool { return gm.actionBuy(c, a.ItemIndex) },
+		"create_character": func(gm *GameManager, c *domain.Character, a Action) bool {
 			gm.createCharacter(c, a)
+			return true
 		},
 	}
 

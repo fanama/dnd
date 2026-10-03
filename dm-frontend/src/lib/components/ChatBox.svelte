@@ -2,6 +2,9 @@
     import { afterUpdate } from 'svelte';
 
     export let logs = [];
+    // Numbering offset: the store is capped, this keeps entries numbered
+    // across the whole session.
+    export let startIndex = 0;
 
     let chatEl;
     let autoScroll = true;
@@ -24,7 +27,7 @@
     <div class="chat-log custom-scrollbar" bind:this={chatEl} on:scroll={handleScroll}>
         {#each logs as msg, i}
             <div class="chat-entry">
-                <span class="chat-num">{i + 1}</span>
+                <span class="chat-num">{startIndex + i + 1}</span>
                 <span class="chat-msg">{msg}</span>
             </div>
         {:else}
